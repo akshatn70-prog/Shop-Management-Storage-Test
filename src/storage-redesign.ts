@@ -137,7 +137,7 @@ function sale(){
 
 function cart(){
  const total=cartItems.reduce((a,x)=>a+Number(x.quantity_base)*Number(x.selling_price_per_base_unit),0);
- return '<section class="page"><div class="page-head"><h2>Cart</h2><span class="badge">'+cartItems.length+' item(s)</span></div><div class="panel"><div class="search-row"><input id="cartSearch" placeholder="Search product to add..."><button id="cartSearchBtn" class="ghost">Search</button></div><div id="cartProducts" class="product-grid compact"></div><form id="cartAdd" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' — '+p.current_stock_base+' available</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min="0.001" step=".001" value="1"></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="grams">grams</option><option value="kg">kg</option></select></label><label>Selling price<input name="price" type="number" step=".01" min="0"></label><div class="full notice" id="cartPreview">Preview: select a product</div><button class="primary full">Add to Cart</button></form><div class="notice">Cart total: <b>'+money(total)+'</b></div>'+ (cartItems.length?'<div class="table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Total</th><th></th></tr></thead><tbody>'+cartItems.map((x,i)=>'<tr><td>'+esc(x.product_name_snapshot||products.find(p=>p.id===x.product_id)?.name||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+money(Number(x.quantity_base)*Number(x.selling_price_per_base_unit))+'</td><td><button class="smallbtn edit-cart" data-i="'+i+'">Edit</button> <button class="smallbtn delete-cart" data-i="'+i+'">Delete</button></td></tr>').join("")+'</tbody></table></div>':"")+'<div class="panel"><form id="cartPay" class="form-grid"><label>Payment<select name="mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label><label>Cash<input name="cash" type="number" step=".01" value="'+total.toFixed(2)+'"></label><label>UPI<input name="upi" type="number" step=".01" value="0"></label><label>Credit<input name="credit" type="number" step=".01" value="0"></label><label>Creditor<select name="creditor"><option value="">Select creditor</option>'+creditors.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'<option value="__new__">＋ New Creditor</option></select></label><button class="primary full" '+(cartItems.length?"":"disabled")+'>Confirm Cart Sale</button></form></div></div></section>';
+ return '<section class="page"><div class="page-head"><h2>Cart</h2><span class="badge">'+cartItems.length+' item(s)</span></div><div class="panel"><div class="search-row"><input id="cartSearch" placeholder="Search product to add..."><button id="cartSearchBtn" class="ghost">Search</button></div><div id="cartProducts" class="product-grid"></div><form id="cartAdd" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' — '+p.current_stock_base+' available</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min="0.001" step=".001" value="1"></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="grams">grams</option><option value="kg">kg</option></select></label><label>Selling price<input name="price" type="number" step=".01" min="0"></label><div class="full notice" id="cartPreview">Preview: select a product</div><button class="primary full">Add to Cart</button></form><div class="notice">Cart total: <b>'+money(total)+'</b></div>'+ (cartItems.length?'<div class="table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Total</th><th></th></tr></thead><tbody>'+cartItems.map((x,i)=>'<tr><td>'+esc(x.product_name_snapshot||products.find(p=>p.id===x.product_id)?.name||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+money(Number(x.quantity_base)*Number(x.selling_price_per_base_unit))+'</td><td><button class="smallbtn edit-cart" data-i="'+i+'">Edit</button> <button class="smallbtn delete-cart" data-i="'+i+'">Delete</button></td></tr>').join("")+'</tbody></table></div>':"")+'<div class="panel"><form id="cartPay" class="form-grid"><label>Payment<select name="mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label><label>Cash<input name="cash" type="number" step=".01" value="'+total.toFixed(2)+'"></label><label>UPI<input name="upi" type="number" step=".01" value="0"></label><label>Credit<input name="credit" type="number" step=".01" value="0"></label><label>Creditor<select name="creditor"><option value="">Select creditor</option>'+creditors.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'<option value="__new__">＋ New Creditor</option></select></label><button class="primary full" '+(cartItems.length?"":"disabled")+'>Confirm Cart Sale</button></form></div></div></section>';
 }
 function stock(){
  const owner=profile?.role==="owner";
@@ -265,22 +265,138 @@ mode.addEventListener("change",()=>{const v=mode.value,split=v==="split"||v==="c
 }
 
 function bindCart(){
- const add=document.querySelector<HTMLFormElement>("#cartAdd")!;
- const sel=add.elements.namedItem("product") as HTMLSelectElement,qty=add.elements.namedItem("qty") as HTMLInputElement,unit=add.elements.namedItem("unit") as HTMLSelectElement,price=add.elements.namedItem("price") as HTMLInputElement;
- const update=()=>{const p=products.find(x=>x.id===sel.value);if(p){price.value=String(p.selling_price_per_base_unit);unit.value=p.unit_type==="piece"?"piece":"grams";const n=Number(qty.value)||0,base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;document.querySelector("#cartPreview")!.textContent="Preview: "+p.name+" × "+n+" = "+money(base*Number(price.value));}};
- const renderMatches=(q:string)=>{const root=document.querySelector("#cartProducts")!,query=q.trim().toLowerCase(),matches=query?products.filter(p=>p.name.toLowerCase().includes(query)):[];root.innerHTML=matches.map(p=>'<button type="button" class="product-card" data-cart-product="'+p.id+'"><b>'+esc(p.name)+'</b><span>'+p.current_stock_base+' available</span><strong>'+money(p.selling_price_per_base_unit)+'</strong></button>').join("")+(query&&!matches.length?'<div class="notice full">No matching product.</div>':"");root.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(x=>x.addEventListener("click",()=>{sel.value=x.dataset.cartProduct!;update()}))};
- document.querySelector("#cartSearchBtn")?.addEventListener("click",()=>renderMatches((document.querySelector("#cartSearch") as HTMLInputElement).value));
- document.querySelector("#cartSearch")?.addEventListener("input",e=>renderMatches((e.target as HTMLInputElement).value));
- sel.addEventListener("change",update);qty.addEventListener("input",update);unit.addEventListener("change",update);price.addEventListener("input",update);update();
- add.addEventListener("submit",e=>{e.preventDefault();const p=products.find(x=>x.id===sel.value)!;const n=Number(qty.value),base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");cartItems.push({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value),product_name_snapshot:p.name,purchase_price_per_base_unit:p.purchase_price_per_base_unit});notify("Added to cart.","success");render()});
- document.querySelectorAll<HTMLButtonElement>(".delete-cart").forEach(b=>b.addEventListener("click",()=>{cartItems.splice(Number(b.dataset.i),1);render()}));
- document.querySelectorAll<HTMLButtonElement>(".edit-cart").forEach(b=>b.addEventListener("click",()=>{const i=Number(b.dataset.i),x=cartItems[i],p=products.find(p=>p.id===x.product_id)!;const q=Number(prompt("Quantity",String(x.quantity_display)));if(!q||q<=0)return;const base=p.unit_type==="piece"?q:x.sold_unit==="kg"?q*1000:q;if(base>p.current_stock_base)return notify("Insufficient stock.","error");const oldTotal=base*Number(x.selling_price_per_base_unit);const editedTotal=Number(prompt("Total money for this item",oldTotal.toFixed(2)));if(!Number.isFinite(editedTotal)||editedTotal<0)return;x.quantity_display=q;x.quantity_base=base;x.selling_price_per_base_unit=base>0?editedTotal/base:0;render()}));
- const pay=document.querySelector<HTMLFormElement>("#cartPay")!,mode=pay.elements.namedItem("mode") as HTMLSelectElement,cash=pay.elements.namedItem("cash") as HTMLInputElement,upi=pay.elements.namedItem("upi") as HTMLInputElement,credit=pay.elements.namedItem("credit") as HTMLInputElement,total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
- const toggle=()=>{const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";document.querySelector("#cartCashBox")?.classList.toggle("hidden",!split);document.querySelector("#cartUpiBox")?.classList.toggle("hidden",!split);document.querySelector("#cartCreditBox")?.classList.toggle("hidden",v!=="credit_split");document.querySelector("#cartCreditorBox")?.classList.toggle("hidden",!cr);if(v==="cash"){cash.value=total.toFixed(2);upi.value="0";credit.value="0"}if(v==="upi"){cash.value="0";upi.value=total.toFixed(2);credit.value="0"}if(v==="credit"){cash.value="0";upi.value="0";credit.value=total.toFixed(2)}};
+ const add=document.querySelector<HTMLFormElement>("#cartAdd");
+ if(!add)return;
+ const sel=add.elements.namedItem("product") as HTMLSelectElement;
+ const qty=add.elements.namedItem("qty") as HTMLInputElement;
+ const unit=add.elements.namedItem("unit") as HTMLSelectElement;
+ const price=add.elements.namedItem("price") as HTMLInputElement;
+ const search=document.querySelector<HTMLInputElement>("#cartSearch");
+ const searchBtn=document.querySelector<HTMLButtonElement>("#cartSearchBtn");
+ const root=document.querySelector<HTMLElement>("#cartProducts");
+
+ const update=()=>{
+  const p=products.find(x=>x.id===sel.value);
+  if(!p)return;
+  price.value=String(p.selling_price_per_base_unit);
+  unit.value=p.unit_type==="piece"?"piece":"grams";
+  const n=Number(qty.value)||0;
+  const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
+  const preview=document.querySelector("#cartPreview");
+  if(preview)preview.textContent="Preview: "+p.name+" × "+n+" = "+money(base*Number(price.value));
+  root?.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(x=>x.classList.toggle("selected",x.dataset.cartProduct===p.id));
+ };
+
+ const renderMatches=()=>{
+  if(!root||!search)return;
+  const query=search.value.trim().toLowerCase();
+  if(!query){root.innerHTML="";return}
+  const matches=products.filter(p=>p.name.toLowerCase().includes(query));
+  root.innerHTML=matches.map(p=>'<button type="button" class="product-card" data-cart-product="'+p.id+'"><b>'+esc(p.name)+'</b><span>'+p.current_stock_base+' available</span><strong>'+money(p.selling_price_per_base_unit)+'</strong></button>').join("")+
+   (matches.length?"":'<div class="notice full">No matching product.</div>');
+  root.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(card=>{
+   card.addEventListener("click",e=>{
+    e.preventDefault();
+    sel.value=card.dataset.cartProduct!;
+    update();
+   });
+  });
+ };
+
+ if(search){
+  search.addEventListener("input",renderMatches);
+  search.addEventListener("keyup",renderMatches);
+  search.addEventListener("search",renderMatches);
+  search.addEventListener("change",renderMatches);
+ }
+ searchBtn?.addEventListener("click",e=>{e.preventDefault();renderMatches()});
+ search?.form?.addEventListener("submit",e=>{e.preventDefault();renderMatches()});
+
+ sel.addEventListener("change",update);
+ qty.addEventListener("input",update);
+ unit.addEventListener("change",update);
+ price.addEventListener("input",update);
+ update();
+
+ add.addEventListener("submit",e=>{
+  e.preventDefault();
+  const p=products.find(x=>x.id===sel.value);
+  if(!p)return notify("Select a product.","error");
+  const n=Number(qty.value);
+  const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
+  if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");
+  cartItems.push({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value),product_name_snapshot:p.name,purchase_price_per_base_unit:p.purchase_price_per_base_unit});
+  notify("Added to cart.","success");
+  render();
+ });
+
+ document.querySelectorAll<HTMLButtonElement>(".delete-cart").forEach(b=>b.addEventListener("click",()=>{
+  cartItems.splice(Number(b.dataset.i),1);render();
+ }));
+ document.querySelectorAll<HTMLButtonElement>(".edit-cart").forEach(b=>b.addEventListener("click",()=>{
+  const i=Number(b.dataset.i),x=cartItems[i],p=products.find(p=>p.id===x.product_id)!;
+  const q=Number(prompt("Quantity",String(x.quantity_display)));
+  if(!q||q<=0)return;
+  const base=p.unit_type==="piece"?q:x.sold_unit==="kg"?q*1000:q;
+  if(base>p.current_stock_base)return notify("Insufficient stock.","error");
+  const oldTotal=base*Number(x.selling_price_per_base_unit);
+  const editedTotal=Number(prompt("Total money for this item",oldTotal.toFixed(2)));
+  if(!Number.isFinite(editedTotal)||editedTotal<0)return;
+  x.quantity_display=q;x.quantity_base=base;x.selling_price_per_base_unit=base>0?editedTotal/base:0;render();
+ }));
+
+ const pay=document.querySelector<HTMLFormElement>("#cartPay")!;
+ const mode=pay.elements.namedItem("mode") as HTMLSelectElement;
+ const cash=pay.elements.namedItem("cash") as HTMLInputElement;
+ const upi=pay.elements.namedItem("upi") as HTMLInputElement;
+ const credit=pay.elements.namedItem("credit") as HTMLInputElement;
+ const total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
+ const toggle=()=>{
+  const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";
+  document.querySelector("#cartCashBox")?.classList.toggle("hidden",!split);
+  document.querySelector("#cartUpiBox")?.classList.toggle("hidden",!split);
+  document.querySelector("#cartCreditBox")?.classList.toggle("hidden",v!=="credit_split");
+  document.querySelector("#cartCreditorBox")?.classList.toggle("hidden",!cr);
+  if(v==="cash"){cash.value=total.toFixed(2);upi.value="0";credit.value="0"}
+  if(v==="upi"){cash.value="0";upi.value=total.toFixed(2);credit.value="0"}
+  if(v==="credit"){cash.value="0";upi.value="0";credit.value=total.toFixed(2)}
+ };
  const cartCreditor=pay.elements.namedItem("creditor") as HTMLSelectElement;
- cartCreditor.addEventListener("change",async()=>{if(cartCreditor.value!=="__new__")return;const n=prompt("Creditor name");if(!n?.trim()){cartCreditor.value="";return}const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){cartCreditor.value="";return}try{await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}catch(err){cartCreditor.value="";notify(err instanceof Error?err.message:String(err),"error")}});
+ cartCreditor.addEventListener("change",async()=>{
+  if(cartCreditor.value!=="__new__")return;
+  const n=prompt("Creditor name");if(!n?.trim()){cartCreditor.value="";return}
+  const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){cartCreditor.value="";return}
+  try{await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}
+  catch(err){cartCreditor.value="";notify(err instanceof Error?err.message:String(err),"error")}
+ });
  mode.addEventListener("change",toggle);toggle();
- pay.addEventListener("submit",async e=>{e.preventDefault();if(!cartItems.length)return notify("Add items first.","error");let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;if(mode.value==="cash"){c=total;u=0;cr=0}if(mode.value==="upi"){c=0;u=total;cr=0}if(mode.value==="credit"){c=0;u=0;cr=total}if(mode.value==="split"&&Math.abs(c+u-total)>.01)return notify("Cash + UPI must equal total.","error");if(mode.value==="credit_split"&&(cr<=0||Math.abs(c+u+cr-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");const crSelect=pay.elements.namedItem("creditor") as HTMLSelectElement,crid=crSelect.value==="__new__"?null:crSelect.value||null;if((mode.value==="credit"||mode.value==="credit_split")&&!crid)return notify("Select a creditor.","error");try{if(demo){for(const x of cartItems){const p=products.find(p=>p.id===x.product_id)!;const itemTotal=x.quantity_base*x.selling_price_per_base_unit;p.current_stock_base-=x.quantity_base;sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base,cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}})}if(cr>0&&crid)ledger.unshift({id:"cart-ledger-"+Date.now(),creditor_id:crid,type:"credit_sale",amount:cr,payment_mode:mode.value,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}})}else{const r=await supabase!.rpc("complete_cart_sale",{p_worker_id:profile!.id,p_items:cartItems,p_payment_mode:mode.value,p_cash_amount:c,p_upi_amount:u,p_credit_amount:cr,p_creditor_id:crid});if(r.error)throw r.error}cartItems=[];notify("Cart sale completed.","success");await loadData();render()}catch(err){notify(err instanceof Error?err.message:String(err),"error")}})
+ pay.addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(!cartItems.length)return notify("Add items first.","error");
+  let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;
+  if(mode.value==="cash"){c=total;u=0;cr=0}
+  if(mode.value==="upi"){c=0;u=total;cr=0}
+  if(mode.value==="credit"){c=0;u=0;cr=total}
+  if(mode.value==="split"&&Math.abs(c+u-total)>.01)return notify("Cash + UPI must equal total.","error");
+  if(mode.value==="credit_split"&&(cr<=0||Math.abs(c+u+cr-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");
+  const crSelect=pay.elements.namedItem("creditor") as HTMLSelectElement,crid=crSelect.value==="__new__"?null:crSelect.value||null;
+  if((mode.value==="credit"||mode.value==="credit_split")&&!crid)return notify("Select a creditor.","error");
+  try{
+   if(demo){
+    for(const x of cartItems){
+     const p=products.find(p=>p.id===x.product_id)!;
+     const itemTotal=x.quantity_base*x.selling_price_per_base_unit;
+     p.current_stock_base-=x.quantity_base;
+     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base,cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
+    }
+    if(cr>0&&crid)ledger.unshift({id:"cart-ledger-"+Date.now(),creditor_id:crid,type:"credit_sale",amount:cr,payment_mode:mode.value,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
+   }else{
+    const r=await supabase!.rpc("complete_cart_sale",{p_worker_id:profile!.id,p_items:cartItems,p_payment_mode:mode.value,p_cash_amount:c,p_upi_amount:u,p_credit_amount:cr,p_creditor_id:crid});
+    if(r.error)throw r.error;
+   }
+   cartItems=[];notify("Cart sale completed.","success");await loadData();render();
+  }catch(err){notify(err instanceof Error?err.message:String(err),"error")}
+ });
 }
 function bindSettings(){
  document.querySelector("#settingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),tz=String(fd.get("timezone")||"").trim();try{new Intl.DateTimeFormat("en-US",{timeZone:tz}).format()}catch{return notify("Invalid IANA timezone.","error")}const h=Number(fd.get("resetHour")||12),mi=String(fd.get("resetMinute")||"00"),period=String(fd.get("resetPeriod")||"AM"),h24=period==="AM"?(h===12?0:h):(h===12?12:h+12),next={shop_name:String(fd.get("shop_name")),currency:String(fd.get("currency")),timezone:tz,dashboard_reset_time:String(h24).padStart(2,"0")+":"+mi,allow_below_cost_sales:fd.get("allow_below_cost_sales")==="on",allow_zero_price_sales:fd.get("allow_zero_price_sales")==="on",workers_can_modify_selling_price:fd.get("workers_can_modify_selling_price")==="on"};if(demo){settings={...settings,...next};notify("Settings saved.","success");render();return}const r=await supabase!.from("shop_settings").update({...next,updated_at:new Date().toISOString()}).eq("id",1);if(r.error)return notify(r.error.message,"error");settings={...settings,...next};notify("Settings saved.","success");render()});
@@ -290,48 +406,62 @@ function bindSettings(){
  document.querySelector("#shopIdCopy")?.addEventListener("click",async()=>{const id=String(settings.shop_id||profile?.shop_id||"");if(!id)return notify("Shop ID is not configured.","error");try{await navigator.clipboard.writeText(id);notify("Shop ID copied.","success")}catch{notify("Copy failed.","error")}});
  document.querySelector("#exportBtn")?.addEventListener("click",async()=>await downloadText("shop-data-"+localDate()+".json",JSON.stringify({exported_at:new Date().toISOString(),settings,products,sales,purchases,creditors,ledger,debtors,debtorLedger,daily,lifetime,audit:auditRows},null,2)));
  document.querySelector("#downloadReport")?.addEventListener("click",async()=>{try{
- const cutoffDate=new Date(Date.now()-89*864e5);
- let dailyRows:any[]=[];
- let reportProducts:any[]=products;
+ const cutoffDate=new Date();cutoffDate.setHours(0,0,0,0);cutoffDate.setDate(cutoffDate.getDate()-89);
+ let dailyRows:any[]=[],reportProducts:any[]=products;
  if(!demo&&supabase){
   const [df,pr]=await Promise.all([
    supabase.from("daily_financial_summaries").select("*").gte("business_date",localDate(cutoffDate)).lte("business_date",localDate()).order("business_date",{ascending:false}),
    supabase.from("products").select("*").eq("is_active",true).order("name")
   ]);
+  if(df.error)throw df.error;
+  if(pr.error)throw pr.error;
   dailyRows=df.data||[];reportProducts=pr.data||[];
  }else{
-  dailyRows=daily.filter(x=>new Date(x.business_date+"T00:00:00").getTime()>=cutoffDate.getTime()).sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date)));
+  dailyRows=daily.filter(x=>String(x.business_date)>=localDate(cutoffDate)&&String(x.business_date)<=localDate()).sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date)));
  }
- const moneyTxt=(n:any)=>new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
- const pad=(v:any,n:number)=>String(v??"").padEnd(n," ");
+ const moneyTxt=(n:any)=>settings.currency+" "+new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
+ const line=(c="=")=>c.repeat(78);
  const lines:string[]=[
-  "SHOP MANAGEMENT — SIMPLE OWNER REPORT",
-  "Generated: "+new Date().toLocaleString("en-IN",{dateStyle:"short",timeStyle:"medium"}),
-  "",
-  "1. CURRENT STOCK",
-  "NO.   ITEM                        STOCK           PURCHASE PRICE    SALE PRICE",
-  "--------------------------------------------------------------------------------------"
+  "SHOP MANAGEMENT — COMPLETE OWNER REPORT",
+  line("="),
+  "Generated: "+new Date().toLocaleString("en-IN",{dateStyle:"full",timeStyle:"medium"}),
+  ""
  ];
+ lines.push("1. CURRENT STOCK",line("-"));
+ if(!reportProducts.length)lines.push("No products found.");
  reportProducts.forEach((p:any,i:number)=>{
-  const stock=String(p.current_stock_base)+" "+(p.unit_type==="piece"?"pcs":"g");
-  lines.push(pad(i+1,6)+pad(p.name,28)+pad(stock,16)+pad(settings.currency+" "+moneyTxt(p.purchase_price_per_base_unit),18)+settings.currency+" "+moneyTxt(p.selling_price_per_base_unit));
+  const stockUnit=p.unit_type==="piece"?"pcs":"g";
+  lines.push(
+   (i+1)+". "+p.name,
+   "   Stock: "+p.current_stock_base+" "+stockUnit,
+   "   Purchase Price: "+moneyTxt(p.purchase_price_per_base_unit),
+   "   Sale Price: "+moneyTxt(p.selling_price_per_base_unit),
+   "   Low Stock Limit: "+p.low_stock_threshold_base+" "+stockUnit,
+   ""
+  );
  });
- lines.push("","2. DAILY SALES — LAST 90 DAYS","DATE          TOTAL SALE        PROFIT            CASH              UPI","--------------------------------------------------------------------------------------");
- const byDate=new Map<string,any>();dailyRows.forEach((d:any)=>byDate.set(String(d.business_date),d));
- for(let i=0;i<90;i++){const dt=new Date();dt.setHours(0,0,0,0);dt.setDate(dt.getDate()-i);const date=localDate(dt),d=byDate.get(date)||{};lines.push(pad(date,14)+pad(settings.currency+" "+moneyTxt(d.total_revenue),18)+pad(settings.currency+" "+moneyTxt(d.total_profit),18)+pad(settings.currency+" "+moneyTxt(d.cash_sales),18)+settings.currency+" "+moneyTxt(d.upi_sales));}
- lines.push("","3. CREDITORS — OUTSTANDING","CREDITOR                        MOBILE            AMOUNT DUE","----------------------------------------------------------------------");
+ lines.push("2. DAILY SALES — LAST 90 DAYS",line("-"),"Date | Total Sale | Profit | Cash | UPI");
+ for(let i=0;i<90;i++){
+  const dt=new Date();dt.setHours(0,0,0,0);dt.setDate(dt.getDate()-i);
+  const date=localDate(dt),d=dailyRows.find(x=>String(x.business_date)===date)||{};
+  lines.push(date+" | "+moneyTxt(d.total_revenue)+" | "+moneyTxt(d.total_profit)+" | "+moneyTxt(d.cash_sales)+" | "+moneyTxt(d.upi_sales));
+ }
+ lines.push("","3. CREDITORS — OUTSTANDING",line("-"));
  const oc=creditors.map((c:any)=>({...c,balance:qBalance(c.id)})).filter((c:any)=>Number(c.balance)>0.01);
- if(!oc.length)lines.push("No outstanding creditors.");else oc.forEach((c:any)=>lines.push(pad(c.name,32)+pad(c.mobile||"",18)+settings.currency+" "+moneyTxt(c.balance)));
- lines.push("","4. DEBTORS — OUTSTANDING","DEBTOR                          MOBILE            AMOUNT DUE","----------------------------------------------------------------------");
+ if(!oc.length)lines.push("No outstanding creditors.");
+ else oc.forEach((c:any,i:number)=>lines.push((i+1)+". "+c.name+" | Mobile: "+(c.mobile||"Not provided")+" | Amount Due: "+moneyTxt(c.balance)));
+ lines.push("","4. DEBTORS — OUTSTANDING",line("-"));
  const od=debtors.map((d:any)=>({...d,balance:dBalance(d.id)})).filter((d:any)=>Number(d.balance)>0.01);
- if(!od.length)lines.push("No outstanding debtors.");else od.forEach((d:any)=>lines.push(pad(d.name,32)+pad(d.mobile||"",18)+settings.currency+" "+moneyTxt(d.balance)));
- lines.push("","5. 90-DAY DATE-WISE FINANCIAL REPORT","DATE          TXN    SALES            CASH             UPI              CREDIT           PROFIT           CASH PROFIT      UPI PROFIT","--------------------------------------------------------------------------------------------------------------------------------");
- dailyRows.forEach((d:any)=>lines.push(pad(d.business_date,14)+pad(d.total_transactions||0,7)+pad(moneyTxt(d.total_revenue),17)+pad(moneyTxt(d.cash_sales),17)+pad(moneyTxt(d.upi_sales),17)+pad(moneyTxt(d.credit_sales),17)+pad(moneyTxt(d.total_profit),17)+pad(moneyTxt(d.cash_profit),17)+moneyTxt(d.upi_profit)));
- lines.push("","Generated locally on this device. No report file is uploaded to Supabase Storage.");
+ if(!od.length)lines.push("No outstanding debtors.");
+ else od.forEach((d:any,i:number)=>lines.push((i+1)+". "+d.name+" | Mobile: "+(d.mobile||"Not provided")+" | Amount Due: "+moneyTxt(d.balance)));
+ lines.push("","5. 90-DAY DATE-WISE FINANCIAL REPORT",line("-"),"Date | Txn | Sales | Cash | UPI | Credit | Profit | Cash Profit | UPI Profit | Cash Purchase | UPI Purchase | Debt Purchase | Debtor Paid");
+ dailyRows.sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date))).forEach((d:any)=>lines.push(
+  String(d.business_date)+" | "+String(d.total_transactions||0)+" | "+moneyTxt(d.total_revenue)+" | "+moneyTxt(d.cash_sales)+" | "+moneyTxt(d.upi_sales)+" | "+moneyTxt(d.credit_sales)+" | "+moneyTxt(d.total_profit)+" | "+moneyTxt(d.cash_profit)+" | "+moneyTxt(d.upi_profit)+" | "+moneyTxt(d.purchase_cash)+" | "+moneyTxt(d.purchase_upi)+" | "+moneyTxt(d.purchase_credit)+" | "+moneyTxt(d.debtor_payment_total)
+ ));
+ lines.push("","This report contains stock, outstanding creditor/debtor balances, and permanent 90-day date-wise financial aggregates.","It does not contain shop settings, owner/worker account information, or audit records.","");
  await downloadText("Shop_Report_All_"+localDate()+".txt",lines.join("\n"));
  notify("Complete shop report downloaded as TXT.","success");
-}catch(err){notify(err instanceof Error?err.message:String(err),"error")}});
-document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
+}catch(err){notify(err instanceof Error?err.message:String(err),"error")}});document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
 }
 
 function bind(){
