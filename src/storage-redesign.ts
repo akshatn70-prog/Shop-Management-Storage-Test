@@ -61,7 +61,7 @@ async function loadData(){
   supabase.from("daily_financial_summaries").select("*").order("business_date",{ascending:false}).limit(400),
   supabase.from("lifetime_financial_summaries").select("*").limit(1).maybeSingle()
  ]);
- if(set.data)settings=set.data;p=p||null;
+ if(set.data)settings=set.data;
  products=p.data||[];sales=s.data||[];purchases=q.data||[];creditors=c.data||[];ledger=l.data||[];daily=df.data||[];lifetime=life.data;
 }
 
