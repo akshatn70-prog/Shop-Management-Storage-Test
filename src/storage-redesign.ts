@@ -340,7 +340,6 @@ function bind(){
  document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
  if(activeTab==="sale")bindSale();
  if(activeTab==="cart")bindCart();
- if(activeTab==="creditors"&&typeof bindCreditors==="function")bindCreditors();
  if(activeTab==="debtors")bindDebtors();
  if(activeTab==="history")bindHistory();
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
