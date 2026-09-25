@@ -161,11 +161,11 @@ function purchaseForm(){
 
 async function createCreditor(name:string,mobile:string){
  if(demo){const c={id:"c"+Date.now(),name,mobile};creditors.push(c);return c}
- const r=await supabase!.rpc("get_or_create_creditor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;return r.data;
+ const r=await supabase!.rpc("get_or_create_creditor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;await loadData();return r.data;
 }
 async function createDebtor(name:string,mobile:string){
  if(demo){const d={id:"d"+Date.now(),name,mobile};debtors.push(d);return d}
- const r=await supabase!.rpc("get_or_create_debtor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;return r.data;
+ const r=await supabase!.rpc("get_or_create_debtor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;await loadData();return r.data;
 }
 function debtorsView(){
  return '<section class="page"><div class="page-head"><div><h2>Debtors</h2><p class="muted">Supplier credit purchases and payments.</p></div><button id="newDebtor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="debtorSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+debtors.map(d=>'<tr class="debtor-row" data-q="'+esc((d.name+" "+d.mobile).toLowerCase())+'"><td>'+esc(d.name)+'</td><td>'+esc(d.mobile)+'</td><td class="'+(dBalance(d.id)>0?"negative":"positive")+'">'+money(dBalance(d.id))+'</td><td><button class="smallbtn pay-debtor" data-id="'+d.id+'">Pay</button> <button class="smallbtn debtor-history" data-id="'+d.id+'">History</button></td></tr>').join("")+'</tbody></table></div></div><div id="debtorDetail"></div></section>';
