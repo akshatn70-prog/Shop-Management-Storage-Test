@@ -81,7 +81,7 @@ function buildDemo(){
  // Add explicit pre-stock records: these never appear in Purchase History or financial purchase reports.
  for(let i=0;i<18;i++){const p=ps[i%ps.length];pur.push({id:"pre"+i,product_id:p.id,product_name_snapshot:p.name,quantity_base:20,quantity_display:20,purchase_unit:p.unit_type,purchase_price_per_base_unit:p.purchase_price_per_base_unit,total_cost:20*p.purchase_price_per_base_unit,purchased_at:daysAgo(20+i),purchased_by:owner.id,profiles:{full_name:"Demo Owner"},payment_mode:"pre_stock",cash_amount:0,upi_amount:0,credit_amount:0,pre_stock:true,supplier_name:"Opening Stock"});}
  for(const c of cr){lg.push({id:"pay"+c.id,creditor_id:c.id,type:"payment_received",amount:c.id==="c1"?1800:650,payment_mode:c.id==="c1"?"split":"upi",cash_amount:c.id==="c1"?900:0,upi_amount:c.id==="c1"?900:650,created_at:daysAgo(2),worker_id:owner.id,profiles:{full_name:"Demo Owner"}});}
- return {owner,worker,products:ps,sales,purchases:pur,creditors:cr,ledger:lg,daily:ds,audit:audits,workers:[owner,worker],lifetime:{lifetime_sales:ds.reduce((a,x)=>a+Number(x.total_revenue||0),0),lifetime_purchases:ds.reduce((a,x)=>a+Number(x.total_purchases||0),0),lifetime_profit:ds.reduce((a,x)=>a+Number(x.total_profit||0),0)}};
+ return {owner,worker,products:ps,sales,purchases:pur,creditors:cr,ledger:lg,daily:ds,audit:audits,workers:[owner,worker],lifetime:{lifetime_sales:ds.reduce((a,x)=>a+Number(x.total_revenue||0),0),lifetime_purchases:pur.reduce((a,x)=>a+Number(x.total_cost||0),0),lifetime_profit:ds.reduce((a,x)=>a+Number(x.total_profit||0),0)}};
 }
 
 let demoData:ReturnType<typeof buildDemo>|null=null;
