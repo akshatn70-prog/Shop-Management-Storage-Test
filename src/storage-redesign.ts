@@ -307,7 +307,7 @@ function bindSettings(){
 }
 
 function addSwipeHints(){
- document.querySelectorAll<HTMLElement>(".table-wrap,.seg").forEach(el=>{
+ document.querySelectorAll<HTMLElement>(".table-wrap,.seg,.bottom-nav").forEach(el=>{
   if(el.scrollWidth<=el.clientWidth+2)return;
   el.classList.add("swipe-hint");
   const update=()=>{
