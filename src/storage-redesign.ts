@@ -334,6 +334,19 @@ function bindSettings(){
 document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
 }
 
+function bind(){
+ document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{activeTab=x.dataset.nav||"dashboard";render()}));
+ document.querySelector("#logout")?.addEventListener("click",async()=>{if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
+ document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
+ if(activeTab==="sale")bindSale();
+ if(activeTab==="cart")bindCart();
+ if(activeTab==="creditors")bindCreditors();
+ if(activeTab==="debtors")bindDebtors();
+ if(activeTab==="history")bindHistory();
+ if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
+ if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm)}
+ if(activeTab==="settings")bindSettings();
+}
 function addSwipeHints(){
  document.querySelectorAll<HTMLElement>(".table-wrap,.seg,.bottom-nav").forEach(el=>{
   if(el.scrollWidth<=el.clientWidth+2)return;
