@@ -87,6 +87,7 @@ begin
     total_profit=excluded.total_profit,cash_profit=excluded.cash_profit,upi_profit=excluded.upi_profit,
     credit_profit=excluded.credit_profit,creditor_amount=excluded.creditor_amount,
     credit_payments_cash=excluded.credit_payments_cash,credit_payments_upi=excluded.credit_payments_upi,
+    total_purchases=public.daily_financial_summaries.total_purchases,
     updated_at=now();
 
   insert into public.daily_financial_summaries(shop_id,business_date,total_purchases,updated_at)
