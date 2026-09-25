@@ -236,8 +236,84 @@ function bindSettings(){
  document.querySelector("#changeDb")?.addEventListener("click",()=>login("Enter the new Supabase project details below."));
  document.querySelector("#shopIdCopy")?.addEventListener("click",async()=>{const id=String(settings.shop_id||profile?.shop_id||"");if(!id)return notify("Shop ID is not configured.","error");try{await navigator.clipboard.writeText(id);notify("Shop ID copied.","success")}catch{notify("Copy failed.","error")}});
  document.querySelector("#exportBtn")?.addEventListener("click",async()=>await downloadText("shop-data-"+localDate()+".json",JSON.stringify({exported_at:new Date().toISOString(),settings,products,sales,purchases,creditors,ledger,debtors,debtorLedger,daily,lifetime,audit:auditRows},null,2)));
- document.querySelector("#downloadReport")?.addEventListener("click",async()=>{try{const cutoff=new Date(Date.now()-90*864e5).toISOString();const cutoff365=new Date(Date.now()-365*864e5).toISOString();let remote:any={};if(!demo&&supabase){const [sa,pu,cl,db,dl,df,au,pr]=await Promise.all([supabase.from("sales").select("*,products(name),profiles:worker_id(full_name)").gte("sold_at",cutoff).order("sold_at",{ascending:false}).limit(10000),supabase.from("inventory_purchases").select("*,profiles:purchased_by(full_name)").gte("purchased_at",cutoff365).order("purchased_at",{ascending:false}).limit(10000),supabase.from("credit_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),supabase.from("debtors").select("*").order("name"),supabase.from("debtor_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),supabase.from("daily_financial_summaries").select("*").gte("business_date",localDate(new Date(Date.now()-90*864e5))).lte("business_date",localDate()).order("business_date",{ascending:false}),supabase.from("audit_logs").select("*,profiles:actor_id(full_name)").order("created_at",{ascending:false}).limit(10000),supabase.from("products").select("*").order("name")]);remote={sales_90_days:sa.data||[],purchases_1_year:pu.data||[],creditor_ledger:cl.data||[],debtors:db.data||[],debtor_ledger:dl.data||[],daily_report_90_days:df.data||[],audit:au.data||[],products:pr.data||[]};}else{remote={sales_90_days:sales.filter(x=>localDate(new Date(x.sold_at))>=localDate(new Date(Date.now()-90*864e5))),purchases_1_year:purchases.filter(x=>new Date(x.purchased_at).getTime()>=Date.now()-365*864e5),creditor_ledger:ledger,debtors,debtors_ledger:debtorLedger,daily_report_90_days:daily.filter(x=>new Date(x.business_date+"T00:00:00").getTime()>=Date.now()-90*864e5),audit:auditRows,products};}const report={generated_at:new Date().toISOString(),shop:settings,owner:profile,workers:workersRows,stock:remote.products,creditors,creditor_balances:creditors.map(c=>({id:c.id,name:c.name,mobile:c.mobile,balance:qBalance(c.id)})),creditor_history:remote.creditor_ledger,debtors:remote.debtors,debtors_with_balances:remote.debtors.map((d:any)=>({...d,balance:dBalance(d.id)})),debtor_history:remote.debtor_ledger,daily_report_90_days:remote.daily_report_90_days,lifetime,sales_90_days:remote.sales_90_days,purchases_1_year:remote.purchases_1_year,audit:remote.audit};await downloadText("Shop_Report_All_"+localDate()+".json",JSON.stringify(report,null,2));notify("Complete shop report downloaded.","success")}catch(err){notify(err instanceof Error?err.message:String(err),"error")}});
- document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
+ document.querySelector("#downloadReport")?.addEventListener("click",async()=>{try{
+ const cutoff=new Date(Date.now()-90*864e5).toISOString();
+ const cutoff365=new Date(Date.now()-365*864e5).toISOString();
+ let remote:any={};
+ if(!demo&&supabase){
+  const [sa,pu,cl,db,dl,au,pr]=await Promise.all([
+   supabase.from("sales").select("*,products(name),profiles:worker_id(full_name)").gte("sold_at",cutoff).order("sold_at",{ascending:false}).limit(10000),
+   supabase.from("inventory_purchases").select("*,profiles:purchased_by(full_name)").gte("purchased_at",cutoff365).order("purchased_at",{ascending:false}).limit(10000),
+   supabase.from("credit_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
+   supabase.from("debtors").select("*").order("name"),
+   supabase.from("debtor_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
+   supabase.from("audit_logs").select("*,profiles:actor_id(full_name)").order("created_at",{ascending:false}).limit(10000),
+   supabase.from("products").select("*").order("name")
+  ]);
+  remote={
+   sales_90_days:sa.data||[],
+   purchases_1_year:pu.data||[],
+   creditor_ledger:cl.data||[],
+   debtors:db.data||[],
+   debtor_ledger:dl.data||[],
+   audit:au.data||[],
+   products:pr.data||[]
+  };
+ }else{
+  remote={
+   sales_90_days:sales.filter(x=>localDate(new Date(x.sold_at))>=localDate(new Date(Date.now()-90*864e5))),
+   purchases_1_year:purchases.filter(x=>new Date(x.purchased_at).getTime()>=Date.now()-365*864e5),
+   creditor_ledger:ledger,
+   debtors,
+   debtor_ledger:debtorLedger,
+   audit:auditRows,
+   products
+  };
+ }
+ const lines:string[]=[];
+ const section=(title:string)=>{lines.push("\\n========== "+title+" ==========")};
+ const row=(label:string,value:any)=>lines.push(label+": "+(typeof value==="string"?value:JSON.stringify(value)));
+ section("SHOP INFORMATION");
+ row("Shop Name",settings.shop_name);
+ row("Currency",settings.currency);
+ row("Timezone",settings.timezone);
+ row("Dashboard Reset Time",settings.dashboard_reset_time);
+ row("Workers Can Modify Selling Price",settings.workers_can_modify_selling_price);
+ row("Allow Below Cost Sales",settings.allow_below_cost_sales);
+ row("Allow Zero Price Sales",settings.allow_zero_price_sales);
+ row("Shop ID",settings.shop_id||profile?.shop_id||"");
+ section("OWNER");
+ row("Owner",profile||{});
+ section("WORKERS");
+ workersRows.forEach((w:any)=>row("Worker",w));
+ section("STOCK / PRODUCTS");
+ remote.products.forEach((p:any)=>row("Product",p));
+ section("CREDITORS");
+ creditors.forEach((c:any)=>row("Creditor",c));
+ section("CREDITOR BALANCES");
+ creditors.forEach((c:any)=>row(c.name,qBalance(c.id)));
+ section("CREDITOR HISTORY");
+ remote.creditor_ledger.forEach((x:any)=>row("Ledger",x));
+ section("DEBTORS");
+ remote.debtors.forEach((d:any)=>row("Debtor",d));
+ section("DEBTOR BALANCES");
+ remote.debtors.forEach((d:any)=>row(d.name,dBalance(d.id)));
+ section("DEBTOR HISTORY");
+ remote.debtor_ledger.forEach((x:any)=>row("Ledger",x));
+ section("LIFETIME TOTALS");
+ row("Lifetime",lifetime);
+ section("SALES - LAST 90 DAYS");
+ remote.sales_90_days.forEach((x:any)=>row("Sale",x));
+ section("PURCHASES - LAST 1 YEAR");
+ remote.purchases_1_year.forEach((x:any)=>row("Purchase",x));
+ section("AUDIT RECORDS");
+ remote.audit.forEach((x:any)=>row("Audit",x));
+ const reportText="SHOP MANAGEMENT - COMPLETE REPORT\\nGenerated: "+new Date().toLocaleString("en-IN",{dateStyle:"full",timeStyle:"medium"})+"\\n"+lines.join("\\n");
+ await downloadText("Shop_Report_All_"+localDate()+".txt",reportText);
+ notify("Complete shop report downloaded as TXT.","success");
+}catch(err){notify(err instanceof Error?err.message:String(err),"error")}});
+
+document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
 }
 
 function addSwipeHints(){
