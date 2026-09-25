@@ -8,7 +8,8 @@ type Sale=any; type Purchase=any; type Creditor=any; type Ledger=any; type Daily
 const URL_KEY="shop_management_supabase_url", KEY_KEY="shop_management_supabase_publishable_key";
 let supabase:SupabaseClient|null=null, profile:Profile|null=null, settings:any={shop_name:"My Shop",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:false};
 let products:Product[]=[], sales:Sale[]=[], purchases:Purchase[]=[], creditors:Creditor[]=[], ledger:Ledger[]=[], daily:Daily[]=[], lifetime:any=null;
-let demo=false, activeTab="dashboard", historyType="sales", historyRange="7", reportDate="";\nlet cartItems:any[]=[];
+let demo=false, activeTab="dashboard", historyType="sales", historyRange="7", reportDate="";
+let cartItems:any[]=[];
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
 const money=(n:number)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
