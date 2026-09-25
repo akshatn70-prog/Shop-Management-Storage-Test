@@ -141,9 +141,9 @@ function bind(){
  document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
  if(activeTab==="sale")bindSale();
  if(activeTab==="cart")bindCart();
- if(activeTab==="creditorList")bindCreditors();
+ if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history"){document.querySelectorAll("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=(x as HTMLElement).dataset.history!;reportDate="";render()}));document.querySelectorAll("[data-range]").forEach(x=>x.addEventListener("click",()=>{historyRange=(x as HTMLElement).dataset.range!;if(historyRange!=="date")reportDate="";render()}));document.querySelector("#historyDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()})}
- if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.target as HTMLInputElement).value;render()});
+ if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
  if(activeTab==="stock")document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);
  if(activeTab==="settings")document.querySelector("#settingsForm")?.addEventListener("submit",saveSettings);
 }
