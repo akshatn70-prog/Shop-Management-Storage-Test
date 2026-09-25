@@ -99,6 +99,8 @@ create table if not exists public.creditor_daily_financial_aggregates (
 create index if not exists creditor_daily_aggregate_shop_date_idx
   on public.creditor_daily_financial_aggregates(shop_id,business_date desc);
 
+alter table public.daily_financial_summaries add column if not exists pre_stock_purchases numeric(14,2) not null default 0;
+
 -- ============================================================
 -- 3. Refresh one day's permanent aggregate
 -- ============================================================
@@ -122,7 +124,7 @@ begin
   insert into public.daily_financial_summaries(
     shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
     total_profit,cash_profit,upi_profit,credit_profit,creditor_amount,
-    purchase_cash,purchase_upi,purchase_credit,total_purchases,updated_at
+    purchase_cash,purchase_upi,purchase_credit,total_purchases,pre_stock_purchases,updated_at
   )
   select
     p_shop_id,
@@ -141,6 +143,7 @@ begin
     coalesce(p.upi_purchase,0),
     coalesce(p.credit_purchase,0),
     coalesce(p.total_purchase,0),
+    coalesce(p.pre_stock_purchase,0),
     now()
   from
     (select 1) seed
@@ -173,7 +176,8 @@ begin
         coalesce(sum(case when i.payment_mode='cash' then i.total_cost else 0 end),0)::numeric as cash_purchase,
         coalesce(sum(case when i.payment_mode='upi' then i.total_cost else 0 end),0)::numeric as upi_purchase,
         coalesce(sum(case when i.payment_mode='credit' then i.total_cost else 0 end),0)::numeric as credit_purchase,
-        coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric as total_purchase
+        coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric as total_purchase,
+        coalesce(sum(case when coalesce(i.pre_stock,false)=true then i.total_cost else 0 end),0)::numeric as pre_stock_purchase
       from public.inventory_purchases i
       join public.profiles w on w.id=i.purchased_by
       where w.shop_id=p_shop_id
@@ -195,6 +199,7 @@ begin
     purchase_upi=excluded.purchase_upi,
     purchase_credit=excluded.purchase_credit,
     total_purchases=excluded.total_purchases,
+    pre_stock_purchases=excluded.pre_stock_purchases,
     updated_at=now();
 end;
 $$;
@@ -214,7 +219,7 @@ begin
   select
     p_shop_id,
     coalesce(sum(total_revenue),0),
-    coalesce(sum(total_purchases),0),
+    coalesce(sum(total_purchases+pre_stock_purchases),0),
     coalesce(sum(total_profit),0),
     now()
   from public.daily_financial_summaries
