@@ -290,53 +290,47 @@ function bindSettings(){
  document.querySelector("#shopIdCopy")?.addEventListener("click",async()=>{const id=String(settings.shop_id||profile?.shop_id||"");if(!id)return notify("Shop ID is not configured.","error");try{await navigator.clipboard.writeText(id);notify("Shop ID copied.","success")}catch{notify("Copy failed.","error")}});
  document.querySelector("#exportBtn")?.addEventListener("click",async()=>await downloadText("shop-data-"+localDate()+".json",JSON.stringify({exported_at:new Date().toISOString(),settings,products,sales,purchases,creditors,ledger,debtors,debtorLedger,daily,lifetime,audit:auditRows},null,2)));
  document.querySelector("#downloadReport")?.addEventListener("click",async()=>{try{
- const cutoff=new Date(Date.now()-90*864e5).toISOString();
- const cutoff365=new Date(Date.now()-365*864e5).toISOString();
- let remote:any={};
+ const cutoffDate=new Date(Date.now()-89*864e5);
+ let dailyRows:any[]=[];
+ let reportProducts:any[]=products;
  if(!demo&&supabase){
-  const [sa,pu,cl,db,dl,df,pr]=await Promise.all([
-   supabase.from("sales").select("*,products(name),profiles:worker_id(full_name)").gte("sold_at",cutoff).order("sold_at",{ascending:false}).limit(10000),
-   supabase.from("inventory_purchases").select("*,profiles:purchased_by(full_name)").gte("purchased_at",cutoff365).order("purchased_at",{ascending:false}).limit(10000),
-   supabase.from("credit_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
-   supabase.from("debtors").select("*").order("name"),
-   supabase.from("debtor_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
-   supabase.from("daily_financial_summaries").select("*").gte("business_date",localDate(new Date(Date.now()-90*864e5))).lte("business_date",localDate()).order("business_date",{ascending:false}),
-   supabase.from("products").select("*").order("name")
+  const [df,pr]=await Promise.all([
+   supabase.from("daily_financial_summaries").select("*").gte("business_date",localDate(cutoffDate)).lte("business_date",localDate()).order("business_date",{ascending:false}),
+   supabase.from("products").select("*").eq("is_active",true).order("name")
   ]);
-  remote={sales_90_days:sa.data||[],purchases_1_year:pu.data||[],creditor_ledger:cl.data||[],debtors:db.data||[],debtor_ledger:dl.data||[],daily_report_90_days:df.data||[],products:pr.data||[]};
+  dailyRows=df.data||[];reportProducts=pr.data||[];
  }else{
-  remote={sales_90_days:sales.filter(x=>localDate(new Date(x.sold_at))>=localDate(new Date(Date.now()-90*864e5))),purchases_1_year:purchases.filter(x=>new Date(x.purchased_at).getTime()>=Date.now()-365*864e5),creditor_ledger:ledger,debtors,debtor_ledger:debtorLedger,daily_report_90_days:daily.filter(x=>new Date(x.business_date+"T00:00:00").getTime()>=Date.now()-90*864e5),products};
+  dailyRows=daily.filter(x=>new Date(x.business_date+"T00:00:00").getTime()>=cutoffDate.getTime()).sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date)));
  }
- const lines:string[]=[];
- const section=(title:string)=>{lines.push("\\n========== "+title+" ==========")};
- const row=(label:string,value:any)=>lines.push(label+": "+(typeof value==="string"?value:JSON.stringify(value)));
- section("STOCK / PRODUCTS");
- remote.products.forEach((p:any)=>row("Product",p));
- section("CREDITORS");
- creditors.forEach((c:any)=>row("Creditor",c));
- section("CREDITOR BALANCES");
- creditors.forEach((c:any)=>row(c.name,qBalance(c.id)));
- section("CREDITOR HISTORY");
- remote.creditor_ledger.forEach((x:any)=>row("Ledger",x));
- section("DEBTORS");
- remote.debtors.forEach((d:any)=>row("Debtor",d));
- section("DEBTOR BALANCES");
- remote.debtors.forEach((d:any)=>row(d.name,dBalance(d.id)));
- section("DEBTOR HISTORY");
- remote.debtor_ledger.forEach((x:any)=>row("Ledger",x));
- section("LIFETIME TOTALS");
- row("Lifetime",lifetime);
- section("90-DAY DATE-WISE FINANCIAL REPORT");
- remote.daily_report_90_days.forEach((x:any)=>row(x.business_date,x));
- section("SALES - LAST 90 DAYS");
- remote.sales_90_days.forEach((x:any)=>row("Sale",x));
- section("PURCHASES - LAST 1 YEAR");
- remote.purchases_1_year.forEach((x:any)=>row("Purchase",x));
- const reportText="SHOP MANAGEMENT - COMPLETE REPORT\\nGenerated: "+new Date().toLocaleString("en-IN",{dateStyle:"full",timeStyle:"medium"})+"\\n"+lines.join("\\n");
- await downloadText("Shop_Report_All_"+localDate()+".txt",reportText);
+ const moneyTxt=(n:any)=>new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
+ const pad=(v:any,n:number)=>String(v??"").padEnd(n," ");
+ const lines:string[]=[
+  "SHOP MANAGEMENT — SIMPLE OWNER REPORT",
+  "Generated: "+new Date().toLocaleString("en-IN",{dateStyle:"short",timeStyle:"medium"}),
+  "",
+  "1. CURRENT STOCK",
+  "NO.   ITEM                        STOCK           PURCHASE PRICE    SALE PRICE",
+  "--------------------------------------------------------------------------------------"
+ ];
+ reportProducts.forEach((p:any,i:number)=>{
+  const stock=String(p.current_stock_base)+" "+(p.unit_type==="piece"?"pcs":"g");
+  lines.push(pad(i+1,6)+pad(p.name,28)+pad(stock,16)+pad(settings.currency+" "+moneyTxt(p.purchase_price_per_base_unit),18)+settings.currency+" "+moneyTxt(p.selling_price_per_base_unit));
+ });
+ lines.push("","2. DAILY SALES — LAST 90 DAYS","DATE          TOTAL SALE        PROFIT            CASH              UPI","--------------------------------------------------------------------------------------");
+ const byDate=new Map<string,any>();dailyRows.forEach((d:any)=>byDate.set(String(d.business_date),d));
+ for(let i=0;i<90;i++){const dt=new Date();dt.setHours(0,0,0,0);dt.setDate(dt.getDate()-i);const date=localDate(dt),d=byDate.get(date)||{};lines.push(pad(date,14)+pad(settings.currency+" "+moneyTxt(d.total_revenue),18)+pad(settings.currency+" "+moneyTxt(d.total_profit),18)+pad(settings.currency+" "+moneyTxt(d.cash_sales),18)+settings.currency+" "+moneyTxt(d.upi_sales));}
+ lines.push("","3. CREDITORS — OUTSTANDING","CREDITOR                        MOBILE            AMOUNT DUE","----------------------------------------------------------------------");
+ const oc=creditors.map((c:any)=>({...c,balance:qBalance(c.id)})).filter((c:any)=>Number(c.balance)>0.01);
+ if(!oc.length)lines.push("No outstanding creditors.");else oc.forEach((c:any)=>lines.push(pad(c.name,32)+pad(c.mobile||"",18)+settings.currency+" "+moneyTxt(c.balance)));
+ lines.push("","4. DEBTORS — OUTSTANDING","DEBTOR                          MOBILE            AMOUNT DUE","----------------------------------------------------------------------");
+ const od=debtors.map((d:any)=>({...d,balance:dBalance(d.id)})).filter((d:any)=>Number(d.balance)>0.01);
+ if(!od.length)lines.push("No outstanding debtors.");else od.forEach((d:any)=>lines.push(pad(d.name,32)+pad(d.mobile||"",18)+settings.currency+" "+moneyTxt(d.balance)));
+ lines.push("","5. 90-DAY DATE-WISE FINANCIAL REPORT","DATE          TXN    SALES            CASH             UPI              CREDIT           PROFIT           CASH PROFIT      UPI PROFIT","--------------------------------------------------------------------------------------------------------------------------------");
+ dailyRows.forEach((d:any)=>lines.push(pad(d.business_date,14)+pad(d.total_transactions||0,7)+pad(moneyTxt(d.total_revenue),17)+pad(moneyTxt(d.cash_sales),17)+pad(moneyTxt(d.upi_sales),17)+pad(moneyTxt(d.credit_sales),17)+pad(moneyTxt(d.total_profit),17)+pad(moneyTxt(d.cash_profit),17)+moneyTxt(d.upi_profit)));
+ lines.push("","Generated locally on this device. No report file is uploaded to Supabase Storage.");
+ await downloadText("Shop_Report_All_"+localDate()+".txt",lines.join("\n"));
  notify("Complete shop report downloaded as TXT.","success");
 }catch(err){notify(err instanceof Error?err.message:String(err),"error")}});
-
 document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
 }
 
