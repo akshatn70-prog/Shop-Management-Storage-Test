@@ -158,8 +158,16 @@ function today(){
 const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b>'+v+'</b></div>';
 
 function reports(){
- const recent=daily.filter(x=>x.business_date).slice(0,7),selected=reportDate?daily.find(x=>x.business_date===reportDate):null,total=lifetime||{};
- return '<section class="page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div>'+(selected?'<div class="metrics">'+m("Transactions",String(selected.total_transactions||0))+m("Sales",money(selected.total_revenue))+m("Cash Sales",money(selected.cash_sales))+m("UPI Sales",money(selected.upi_sales))+m("Credit Sales",money(selected.credit_sales))+m("Profit",money(selected.total_profit))+m("Creditor Amount",money(selected.creditor_amount))+m("Cash Purchase",money(selected.purchase_cash))+m("UPI Purchase",money(selected.purchase_upi))+m("Credit Purchase",money(selected.purchase_credit))+'</div><p class="tiny">Purchase figures exclude pre-stock recordings.</p>':'<p class="muted">Latest 7 days are shown by default. Date search shows that date's permanent aggregate only.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Tx</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Creditor</th><th>Cash Purchase</th><th>UPI Purchase</th></tr></thead><tbody>'+recent.map(d=>'<tr><td>'+d.business_date+'</td><td>'+d.total_transactions+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.creditor_amount)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td></tr>').join("")+'</tbody></table></div>')+'</div></section>';
+ const recent=daily.filter(x=>x.business_date).slice(0,7);
+ const selected=reportDate?daily.find(x=>x.business_date===reportDate):null;
+ const total=lifetime||{};
+ let body="";
+ if(selected){
+   body='<div class="metrics">'+m("Transactions",String(selected.total_transactions||0))+m("Sales",money(selected.total_revenue))+m("Cash Sales",money(selected.cash_sales))+m("UPI Sales",money(selected.upi_sales))+m("Credit Sales",money(selected.credit_sales))+m("Profit",money(selected.total_profit))+m("Creditor Amount",money(selected.creditor_amount))+m("Cash Purchase",money(selected.purchase_cash))+m("UPI Purchase",money(selected.purchase_upi))+m("Credit Purchase",money(selected.purchase_credit))+'</div><p class="tiny">Purchase figures exclude pre-stock recordings.</p>';
+ }else{
+   body='<p class="muted">Latest 7 days are shown by default. Date search shows that date\'s permanent aggregate only.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Tx</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Creditor</th><th>Cash Purchase</th><th>UPI Purchase</th></tr></thead><tbody>'+recent.map(d=>'<tr><td>'+d.business_date+'</td><td>'+d.total_transactions+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.creditor_amount)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td></tr>').join("")+'</tbody></table></div>';
+ }
+ return '<section class="page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div>'+body+'</div></section>';
 }
 
 function workers(){
@@ -220,7 +228,17 @@ function bindHistory(){
  document.querySelectorAll<HTMLElement>("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=x.dataset.history!;historyDate="";render()}));
  document.querySelectorAll<HTMLElement>("[data-range]").forEach(x=>x.addEventListener("click",()=>{historyRange=x.dataset.range!;if(historyRange!=="date")historyDate="";render()}));
  document.querySelector("#historyDate")?.addEventListener("change",e=>{historyDate=(e.currentTarget as HTMLInputElement).value;render()});
- document.querySelectorAll<HTMLButtonElement>(".pay-purchase").forEach(b=>b.addEventListener("click",async()=>{const p=purchases.find(x=>x.id===b.dataset.id);if(!p)return;const amount=Number(prompt("Purchase credit payment. Outstanding: "+money(Number(p.credit_amount||0)));if(!amount||amount<=0||amount>Number(p.credit_amount||0))return notify("Invalid payment amount.","error");p.credit_amount=Number(p.credit_amount||0)-amount;if(demo){notify("Purchase credit payment recorded.","success");render();return}const r=await supabase!.rpc("pay_purchase_credit",{p_purchase_id:p.id,p_amount:amount,p_payment_mode:"cash"});if(r.error)return notify(r.error.message,"error");await loadData();render()}));
+ document.querySelectorAll<HTMLButtonElement>(".pay-purchase").forEach(b=>b.addEventListener("click",async()=>{
+   const p=purchases.find(x=>x.id===b.dataset.id);
+   if(!p)return;
+   const outstanding=Number(p.credit_amount||0)-Number(p.credit_paid||0);
+   const amount=Number(prompt("Purchase credit payment. Outstanding: "+money(outstanding)));
+   if(!amount||amount<=0||amount>outstanding+0.01)return notify("Invalid payment amount.","error");
+   if(demo){p.credit_paid=Number(p.credit_paid||0)+amount;notify("Purchase credit payment recorded.","success");render();return}
+   const r=await supabase!.rpc("pay_purchase_credit",{p_purchase_id:p.id,p_amount:amount,p_payment_mode:"cash"});
+   if(r.error)return notify(r.error.message,"error");
+   await loadData();render();
+ }));
 }
 
 function bind(){
