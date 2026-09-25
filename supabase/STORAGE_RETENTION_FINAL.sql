@@ -181,7 +181,6 @@ begin
       from public.inventory_purchases i
       join public.profiles w on w.id=i.purchased_by
       where w.shop_id=p_shop_id
-        and coalesce(i.pre_stock,false)=false
         and (i.purchased_at at time zone v_tz)::date=p_business_date
     ) p on true
   on conflict(shop_id,business_date) do update set
@@ -299,7 +298,7 @@ begin
     from public.inventory_purchases i
     join public.profiles w on w.id=i.purchased_by
     cross join public.shop_settings st
-    where w.shop_id is not null and coalesce(i.pre_stock,false)=false
+    where w.shop_id is not null
   loop
     perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
   end loop;
