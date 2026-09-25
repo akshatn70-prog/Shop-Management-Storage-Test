@@ -102,7 +102,8 @@ async function loadData(){
 
 function shell(title:string){
  const owner=profile?.role==="owner";
- const nav:[string,string][]=[["dashboard","Dashboard"],["sale","Add Sale"],["cart","Cart"],["stock","Stock"],["creditors","Creditors"],["history","History"],...(owner?[["today","Today Stats"],["reports","Reports"],["workers","Workers"],["audit","Audit"],["settings","Settings"]]:[])];
+ const nav:[string,string][]=[["dashboard","Dashboard"],["sale","Add Sale"],["cart","Cart"],["stock","Stock"],["creditors","Creditors"],["history","History"]];
+ if(owner) nav.push(["today","Today Stats"],["reports","Reports"],["workers","Workers"],["audit","Audit"],["settings","Settings"]);
  return '<div class="app-shell"><header><div><b>'+esc(settings.shop_name)+'</b><span class="muted">'+esc(title)+'</span></div><button id="logout" class="ghost small">Sign out</button></header><main><div id="view"></div></main><nav class="bottom-nav">'+nav.map(([id,n])=>'<button data-nav="'+id+'" class="'+(activeTab===id?"active":"")+'">'+esc(n)+'</button>').join("")+'</nav></div>';
 }
 
