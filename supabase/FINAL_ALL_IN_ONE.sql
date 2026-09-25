@@ -3423,7 +3423,9 @@ returns trigger
 language plpgsql security definer set search_path=''
 as $$
 begin
-  if tg_op in ('UPDATE','DELETE') then
+  -- Purchase-detail deletion is only allowed by retention after the debt is paid,
+  -- so keep the permanent debtor accounting entry instead of creating a negative balance.
+  if tg_op='UPDATE' then
     delete from public.debtor_ledger
     where purchase_id=old.id and type='credit_purchase';
   end if;
