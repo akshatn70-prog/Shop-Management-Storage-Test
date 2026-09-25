@@ -494,7 +494,9 @@ begin
     and not exists(select 1 from public.sales s where s.transaction_id=sale_transactions.id);
   
   delete from public.inventory_purchases
-  where purchased_at < now()-interval '1 year';
+  where purchased_at < now()-interval '1 year'
+    and coalesce(pre_stock,false)=false
+    and (credit_amount-credit_paid) <= 0.01;
   get diagnostics v_purchase_deleted=row_count;
 
   delete from public.audit_logs where created_at < now()-interval '30 days';
