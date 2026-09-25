@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+.DS_Store
+*.log
+android/.gradle/\nandroid/local.properties\nandroid/**/build/\nandroid/.idea/\n
