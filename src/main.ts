@@ -14,6 +14,91 @@ const SUPABASE_CONFIG_URL_KEY = "shop_management_supabase_url";
 const SUPABASE_CONFIG_KEY_KEY = "shop_management_supabase_publishable_key";
 
 let supabase: SupabaseClient | null = null;
+let demoMode = false;
+
+function createDemoClient() {
+  const now = new Date();
+  const iso = (daysAgo = 0, hour = 12) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - daysAgo);
+    d.setHours(hour, 15, 0, 0);
+    return d.toISOString();
+  };
+
+  const products = [
+    { id:"demo-p1", name:"Tata Salt 1kg", unit_type:"piece", current_stock_base:48, purchase_price_per_base_unit:24, selling_price_per_base_unit:30, is_active:true },
+    { id:"demo-p2", name:"Aashirvaad Atta 5kg", unit_type:"piece", current_stock_base:18, purchase_price_per_base_unit:210, selling_price_per_base_unit:255, is_active:true },
+    { id:"demo-p3", name:"Fortune Oil 1L", unit_type:"piece", current_stock_base:27, purchase_price_per_base_unit:112, selling_price_per_base_unit:135, is_active:true },
+    { id:"demo-p4", name:"Toor Dal 1kg", unit_type:"piece", current_stock_base:9, purchase_price_per_base_unit:118, selling_price_per_base_unit:145, is_active:true },
+    { id:"demo-p5", name:"Basmati Rice 5kg", unit_type:"piece", current_stock_base:6, purchase_price_per_base_unit:410, selling_price_per_base_unit:475, is_active:true }
+  ];
+  const worker={id:"demo-worker",full_name:"Demo Worker",email:"worker@demo.shop",role:"worker",is_active:true,created_at:iso(20)};
+  const owner={id:"demo-owner",full_name:"Demo Owner",email:"owner@demo.shop",role:"owner",is_active:true,created_at:iso(60)};
+  const sales=[
+    {id:"demo-s1",sold_at:iso(0,10),product_id:"demo-p1",worker_id:worker.id,total_sale:120,gross_profit:24,cash_amount:120,upi_amount:0,payment_mode:"cash",quantity:4,voided:false,products:{name:"Tata Salt 1kg",unit_type:"piece"},profiles:{full_name:"Demo Worker"}},
+    {id:"demo-s2",sold_at:iso(0,13),product_id:"demo-p2",worker_id:worker.id,total_sale:510,gross_profit:90,cash_amount:200,upi_amount:310,payment_mode:"split",quantity:2,voided:false,products:{name:"Aashirvaad Atta 5kg",unit_type:"piece"},profiles:{full_name:"Demo Worker"}},
+    {id:"demo-s3",sold_at:iso(1,16),product_id:"demo-p3",worker_id:owner.id,total_sale:270,gross_profit:46,cash_amount:0,upi_amount:270,payment_mode:"upi",quantity:2,voided:false,products:{name:"Fortune Oil 1L",unit_type:"piece"},profiles:{full_name:"Demo Owner"}},
+    {id:"demo-s4",sold_at:iso(2,11),product_id:"demo-p4",worker_id:worker.id,total_sale:290,gross_profit:54,cash_amount:290,upi_amount:0,payment_mode:"cash",quantity:2,voided:false,products:{name:"Toor Dal 1kg",unit_type:"piece"},profiles:{full_name:"Demo Worker"}},
+    {id:"demo-s5",sold_at:iso(5,14),product_id:"demo-p5",worker_id:owner.id,total_sale:950,gross_profit:130,cash_amount:500,upi_amount:450,payment_mode:"split",quantity:2,voided:false,products:{name:"Basmati Rice 5kg",unit_type:"piece"},profiles:{full_name:"Demo Owner"}}
+  ];
+  const creditors=[
+    {id:"demo-c1",name:"Rahul Sharma",mobile:"9876543210",is_active:true},
+    {id:"demo-c2",name:"Priya Traders",mobile:"9123456780",is_active:true}
+  ];
+  const creditLedger=[
+    {id:"demo-cl1",creditor_id:"demo-c1",worker_id:worker.id,type:"credit_sale",amount:850,created_at:iso(3,12),profiles:{full_name:"Demo Worker",email:worker.email}},
+    {id:"demo-cl2",creditor_id:"demo-c1",worker_id:owner.id,type:"payment_received",amount:300,created_at:iso(1,17),profiles:{full_name:"Demo Owner",email:owner.email}},
+    {id:"demo-cl3",creditor_id:"demo-c2",worker_id:worker.id,type:"credit_sale",amount:420,created_at:iso(7,13),profiles:{full_name:"Demo Worker",email:worker.email}}
+  ];
+  const settingsRow={id:1,shop_id:"SHOP-DEMO0001",shop_name:"Demo Grocery Store",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:true,allow_below_cost_sales:false,allow_zero_price_sales:false,dashboard_reset_time:"00:00"};
+  const tables:any={products,sales,daily_closings:[],day_end_summaries:[],day_end_summary_lines:[],creditors,credit_ledger:creditLedger,profiles:[owner,worker],inventory_purchases:[],audit_logs:[],shop_settings:[settingsRow],automatic_day_end_snapshots:[],sale_transactions:[]};
+
+  const clone=(v:any)=>JSON.parse(JSON.stringify(v));
+  const builder=(table:string)=>{
+    const state={rows:tables[table]||[],filters:[] as any[],sort:null as any,limitN:null as number|null,rangeFrom:null as number|null,rangeTo:null as number|null};
+    const api:any={
+      select:()=>api,
+      eq:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]===val),api),
+      neq:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]!==val),api),
+      gte:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]>=val),api),
+      gt:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]>val),api),
+      lt:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]<val),api),
+      lte:(col:string,val:any)=>(state.filters.push((r:any)=>r[col]<=val),api),
+      in:(col:string,vals:any[])=> (state.filters.push((r:any)=>vals.includes(r[col])),api),
+      order:(col:string,opt:any={})=>(state.sort={col,asc:opt.ascending!==false},api),
+      limit:(n:number)=>(state.limitN=n,api),
+      range:(a:number,b:number)=>(state.rangeFrom=a,state.rangeTo=b,api),
+      single:async()=>{const out=run(); return {data:clone(out[0]||null),error:out.length?null:{message:"No demo row"}}},
+      maybeSingle:async()=>({data:clone(run()[0]||null),error:null}),
+      then:(resolve:any,reject:any)=>Promise.resolve({data:clone(run()),error:null}).then(resolve,reject),
+      update:(patch:any)=>({eq:async(col:string,val:any)=>{for(const row of tables[table]||[]) if(row[col]===val) Object.assign(row,patch); return {data:null,error:null};}}),
+      insert:async(payload:any)=>{const arr=Array.isArray(payload)?payload:[payload]; tables[table]=(tables[table]||[]).concat(clone(arr)); return {data:clone(arr),error:null};},
+      delete:()=>({eq:async(col:string,val:any)=>{tables[table]=(tables[table]||[]).filter((r:any)=>r[col]!==val);return {data:null,error:null};}})
+    };
+    const run=()=>{let out=state.rows.filter((r:any)=>state.filters.every(f=>f(r))); if(state.sort) out.sort((a:any,b:any)=>{const av=a[state.sort.col],bv=b[state.sort.col];return av===bv?0:(av>bv?1:-1)*(state.sort.asc?1:-1)}); if(state.rangeFrom!==null) out=out.slice(state.rangeFrom,state.rangeTo!+1); if(state.limitN!==null) out=out.slice(0,state.limitN); return out;};
+    return api;
+  };
+  const demo:any={
+    from:(table:string)=>builder(table),
+    rpc:async(name:string,args:any={})=>{
+      if(name==="get_or_create_creditor"){let x=creditors.find((c:any)=>c.name.toLowerCase()===String(args.p_name||"").toLowerCase()); if(!x){x={id:"demo-c"+Date.now(),name:String(args.p_name||"Demo Customer"),mobile:String(args.p_mobile||""),is_active:true};creditors.push(x)} return {data:{ok:true,creditor_id:x.id},error:null};}
+      if(name==="receive_credit_payment"){creditLedger.push({id:"demo-cl"+Date.now(),creditor_id:args.p_creditor_id,worker_id:profile?.id,type:"payment_received",amount:Number(args.p_amount||0),created_at:new Date().toISOString(),profiles:{full_name:profile?.full_name||"Demo Owner",email:profile?.email||""}});return {data:{ok:true},error:null};}
+      if(name==="verify_shop_management"||name==="verify_cart_credit_schema"||name==="activate_user_after_email_verification") return {data:{ok:true},error:null};
+      return {data:{ok:true},error:null};
+    },
+    auth:{
+      getSession:async()=>({data:{session:{user:{id:owner.id,email:owner.email,email_confirmed_at:new Date().toISOString()}}}}),
+      signOut:async()=>({error:null}),
+      signInWithPassword:async()=>({data:{session:{user:{id:owner.id,email:owner.email,email_confirmed_at:new Date().toISOString()}}},error:null}),
+      onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}),
+      updateUser:async()=>({error:null}),
+      resetPasswordForEmail:async()=>({error:null})
+    },
+    channel:()=>({on(){return this},subscribe(){return this},unsubscribe(){}})
+  };
+  return demo;
+}
+
 
 function loadSupabaseConnection() {
   const url = (localStorage.getItem(SUPABASE_CONFIG_URL_KEY) || "").trim();
@@ -689,7 +774,7 @@ async function checkWorkerApproval() {
 
   profile = data as UserProfile;
   stopWorkerApprovalWatcher();
-  setupRealtime();
+  if (!demoMode) setupRealtime();
   notify("Worker account approved. Opening dashboard…", "success");
   await refresh();
 }
@@ -810,6 +895,7 @@ function loginView(message = "", initialMode: "choose" | "owner" | "worker" = "c
             <button id="workerNew" class="ghost">New Worker Account</button>
           </div>
           <p class="tiny">Already Registered uses only the account email and password. New accounts use the normal shop setup flow.</p>
+          <button id="demoTestBtn" class="ghost" type="button" style="margin-top:12px;border-style:dashed">🧪 Test Demo App (Temporary)</button>
         </div></div>`;
       document.querySelector("#ownerRegistered")?.addEventListener("click", () => {
         if (hasCustomerSupabaseConnection()) {
@@ -819,6 +905,11 @@ function loginView(message = "", initialMode: "choose" | "owner" | "worker" = "c
         } else {
           void recoverAccountView("owner");
         }
+      });
+      document.querySelector("#demoTestBtn")?.addEventListener("click", async () => {
+        demoMode = true;
+        supabase = createDemoClient() as SupabaseClient;
+        await loadSession({user:{id:"demo-owner",email:"owner@demo.shop",email_confirmed_at:new Date().toISOString()}});
       });
       document.querySelector("#ownerNew")?.addEventListener("click", () => void licenseView());
       document.querySelector("#workerRegistered")?.addEventListener("click", () => {
@@ -2110,7 +2201,7 @@ async function loadSession(session: any) {
     return loginView("Please verify your email before signing in.", data.role === "owner" ? "owner" : "worker");
   }
 
-  if (data.role === "owner") {
+  if (data.role === "owner" && !demoMode) {
     const licenseOk = await ensureShopLicense();
     if (!licenseOk) {
       await supabase.auth.signOut();
@@ -2126,6 +2217,7 @@ async function loadSession(session: any) {
   }
 
   profile = data as UserProfile;
+  if (demoMode) { settings = { ...settings, shop_name: "Demo Grocery Store", currency: "INR", timezone: "Asia/Kolkata", shop_id: "SHOP-DEMO0001", workers_can_modify_selling_price: true }; }
   if (!profile.full_name) profile.full_name = session.user.email?.split("@")[0] || "User";
   setupRealtime();
 
