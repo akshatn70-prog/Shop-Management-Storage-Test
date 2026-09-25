@@ -139,7 +139,8 @@ function bind(){
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{activeTab=x.dataset.nav||"dashboard";render()}));
  document.querySelector("#logout")?.addEventListener("click",async()=>{if(!demo)await supabase?.auth.signOut();profile=null;demo=false;activeTab="dashboard";login()});
  document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
- if(activeTab==="sale")bindSale();\n if(activeTab==="cart")bindCart();
+ if(activeTab==="sale")bindSale();
+ if(activeTab==="cart")bindCart();
  if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history"){document.querySelectorAll("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=(x as HTMLElement).dataset.history!;reportDate="";render()}));document.querySelectorAll("[data-range]").forEach(x=>x.addEventListener("click",()=>{historyRange=(x as HTMLElement).dataset.range!;if(historyRange!=="date")reportDate="";render()}));document.querySelector("#historyDate")?.addEventListener("change",e=>{reportDate=(e.target as HTMLInputElement).value;render()})}
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.target as HTMLInputElement).value;render()});
