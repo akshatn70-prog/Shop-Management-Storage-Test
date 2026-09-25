@@ -21,8 +21,8 @@ const readConn=()=>({url:localStorage.getItem(URL_KEY)||"",key:localStorage.getI
 const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key);return true}return false};
 
 function demoClient(){
- const owner={id:"demo-owner",full_name:"Demo Owner",email:"owner@demo.shop",role:"owner",is_active:true,shop_id:"SHOP-DEMO0001"};
- const worker={id:"demo-worker",full_name:"Demo Worker",email:"worker@demo.shop",role:"worker",is_active:true,shop_id:"SHOP-DEMO0001"};
+ const owner:Profile={id:"demo-owner",full_name:"Demo Owner",email:"owner@demo.shop",role:"owner",is_active:true,shop_id:"SHOP-DEMO0001"};
+ const worker:Profile={id:"demo-worker",full_name:"Demo Worker",email:"worker@demo.shop",role:"worker",is_active:true,shop_id:"SHOP-DEMO0001"};
  const ps:Product[]=[
   {id:"p1",name:"Tata Salt 1kg",unit_type:"piece",current_stock_base:48,purchase_price_per_base_unit:24,selling_price_per_base_unit:30,low_stock_threshold_base:10,is_active:true},
   {id:"p2",name:"Aashirvaad Atta 5kg",unit_type:"piece",current_stock_base:18,purchase_price_per_base_unit:210,selling_price_per_base_unit:255,low_stock_threshold_base:5,is_active:true},
