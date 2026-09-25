@@ -38,6 +38,18 @@ create table if not exists public.creditor_retention (
   zero_balance_since timestamptz
 );
 
+alter table public.daily_financial_summaries enable row level security;
+alter table public.lifetime_financial_summaries enable row level security;
+alter table public.creditor_retention enable row level security;
+
+drop policy if exists daily_financial_owner_read on public.daily_financial_summaries;
+create policy daily_financial_owner_read on public.daily_financial_summaries
+for select to authenticated using (public.is_owner());
+
+drop policy if exists lifetime_financial_owner_read on public.lifetime_financial_summaries;
+create policy lifetime_financial_owner_read on public.lifetime_financial_summaries
+for select to authenticated using (public.is_owner());
+
 create index if not exists daily_financial_shop_date_idx
   on public.daily_financial_summaries(shop_id,business_date desc);
 create index if not exists creditor_retention_zero_idx
