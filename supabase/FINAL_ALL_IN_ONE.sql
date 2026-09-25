@@ -2633,8 +2633,6 @@ grant execute on function public.verify_cart_credit_schema() to authenticated;
 
 
 -- ============================================================
--- STORAGE-EFFICIENT REDESIGN FINAL RETENTION LAYER
--- ============================================================
 -- SHOP MANAGEMENT STORAGE-EFFICIENT REDESIGN
 -- Run after the existing FINAL_ALL_IN_ONE.sql on the test Supabase project.
 -- This migration implements the retention rules from the Storage-Efficient App & Database Blueprint.
@@ -2704,8 +2702,6 @@ create table if not exists public.daily_financial_summaries (
   purchase_upi numeric(14,2) not null default 0,
   purchase_credit numeric(14,2) not null default 0,
   total_purchases numeric(14,2) not null default 0,
-  pre_stock_purchases numeric(14,2) not null default 0,
-  pre_stock_purchases numeric(14,2) not null default 0,
   updated_at timestamptz not null default now(),
   unique(shop_id,business_date)
 );
@@ -2737,6 +2733,8 @@ create table if not exists public.creditor_daily_financial_aggregates (
 
 create index if not exists creditor_daily_aggregate_shop_date_idx
   on public.creditor_daily_financial_aggregates(shop_id,business_date desc);
+
+alter table public.daily_financial_summaries add column if not exists pre_stock_purchases numeric(14,2) not null default 0;
 
 -- ============================================================
 -- 3. Refresh one day's permanent aggregate
