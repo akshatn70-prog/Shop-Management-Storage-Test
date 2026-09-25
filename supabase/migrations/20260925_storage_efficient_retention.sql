@@ -66,8 +66,7 @@ begin
     coalesce(sum(case when s.payment_mode in ('cash','split') then s.cash_amount else 0 end),0),
     coalesce(sum(case when s.payment_mode in ('upi','split') then s.upi_amount else 0 end),0),
     coalesce(sum(case when st.payment_mode in ('credit','credit_split') then greatest(0,st.total-st.cash_amount-st.upi_amount) else 0 end),0),
-    coalesce((select sum(cl.cash_amount) from public.credit_ledger cl where cl.type='payment_received' and cl.creditor_id is not null and (cl.created_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date=(s.sold_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date),0),
-    coalesce((select sum(cl.upi_amount) from public.credit_ledger cl where cl.type='payment_received' and cl.creditor_id is not null and (cl.created_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date=(s.sold_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date),0),
+    0,\n    0,
     coalesce(sum(s.gross_profit),0),
     coalesce(sum(case when st.payment_mode='cash' then s.gross_profit when st.payment_mode='split' then s.gross_profit*(case when st.total>0 then st.cash_amount/st.total else 0 end) else 0 end),0),
     coalesce(sum(case when st.payment_mode='upi' then s.gross_profit when st.payment_mode='split' then s.gross_profit*(case when st.total>0 then st.upi_amount/st.total else 0 end) else 0 end),0),
@@ -88,6 +87,18 @@ begin
     credit_profit=excluded.credit_profit,creditor_amount=excluded.creditor_amount,
     credit_payments_cash=excluded.credit_payments_cash,credit_payments_upi=excluded.credit_payments_upi,
     total_purchases=public.daily_financial_summaries.total_purchases,
+    updated_at=now();
+
+  insert into public.daily_financial_summaries(shop_id,business_date,credit_payments_cash,credit_payments_upi,updated_at)
+  select v_shop,
+    (cl.created_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date,
+    coalesce(sum(cl.cash_amount),0),coalesce(sum(cl.upi_amount),0),now()
+  from public.credit_ledger cl
+  where cl.type='payment_received'
+  group by 2
+  on conflict(shop_id,business_date) do update set
+    credit_payments_cash=excluded.credit_payments_cash,
+    credit_payments_upi=excluded.credit_payments_upi,
     updated_at=now();
 
   insert into public.daily_financial_summaries(shop_id,business_date,total_purchases,updated_at)
