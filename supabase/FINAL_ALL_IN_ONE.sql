@@ -3236,7 +3236,9 @@ begin
   delete from public.daily_financial_summaries;
   delete from public.lifetime_financial_summaries;
   delete from public.creditor_daily_financial_aggregates;
+  perform set_config('shop.allow_stock_change','on',true);
   update public.products set current_stock_base=0,updated_at=now();
+  perform set_config('shop.allow_stock_change','off',true);
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values((select auth.uid()),'clear_all','shop','{}'::jsonb);
 end;
