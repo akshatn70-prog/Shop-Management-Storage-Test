@@ -241,51 +241,22 @@ function bindSettings(){
  const cutoff365=new Date(Date.now()-365*864e5).toISOString();
  let remote:any={};
  if(!demo&&supabase){
-  const [sa,pu,cl,db,dl,au,pr]=await Promise.all([
+  const [sa,pu,cl,db,dl,df,pr]=await Promise.all([
    supabase.from("sales").select("*,products(name),profiles:worker_id(full_name)").gte("sold_at",cutoff).order("sold_at",{ascending:false}).limit(10000),
    supabase.from("inventory_purchases").select("*,profiles:purchased_by(full_name)").gte("purchased_at",cutoff365).order("purchased_at",{ascending:false}).limit(10000),
    supabase.from("credit_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
    supabase.from("debtors").select("*").order("name"),
    supabase.from("debtor_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(10000),
-   supabase.from("audit_logs").select("*,profiles:actor_id(full_name)").order("created_at",{ascending:false}).limit(10000),
+   supabase.from("daily_financial_summaries").select("*").gte("business_date",localDate(new Date(Date.now()-90*864e5))).lte("business_date",localDate()).order("business_date",{ascending:false}),
    supabase.from("products").select("*").order("name")
   ]);
-  remote={
-   sales_90_days:sa.data||[],
-   purchases_1_year:pu.data||[],
-   creditor_ledger:cl.data||[],
-   debtors:db.data||[],
-   debtor_ledger:dl.data||[],
-   audit:au.data||[],
-   products:pr.data||[]
-  };
+  remote={sales_90_days:sa.data||[],purchases_1_year:pu.data||[],creditor_ledger:cl.data||[],debtors:db.data||[],debtor_ledger:dl.data||[],daily_report_90_days:df.data||[],products:pr.data||[]};
  }else{
-  remote={
-   sales_90_days:sales.filter(x=>localDate(new Date(x.sold_at))>=localDate(new Date(Date.now()-90*864e5))),
-   purchases_1_year:purchases.filter(x=>new Date(x.purchased_at).getTime()>=Date.now()-365*864e5),
-   creditor_ledger:ledger,
-   debtors,
-   debtor_ledger:debtorLedger,
-   audit:auditRows,
-   products
-  };
+  remote={sales_90_days:sales.filter(x=>localDate(new Date(x.sold_at))>=localDate(new Date(Date.now()-90*864e5))),purchases_1_year:purchases.filter(x=>new Date(x.purchased_at).getTime()>=Date.now()-365*864e5),creditor_ledger:ledger,debtors,debtor_ledger:debtorLedger,daily_report_90_days:daily.filter(x=>new Date(x.business_date+"T00:00:00").getTime()>=Date.now()-90*864e5),products};
  }
  const lines:string[]=[];
  const section=(title:string)=>{lines.push("\\n========== "+title+" ==========")};
  const row=(label:string,value:any)=>lines.push(label+": "+(typeof value==="string"?value:JSON.stringify(value)));
- section("SHOP INFORMATION");
- row("Shop Name",settings.shop_name);
- row("Currency",settings.currency);
- row("Timezone",settings.timezone);
- row("Dashboard Reset Time",settings.dashboard_reset_time);
- row("Workers Can Modify Selling Price",settings.workers_can_modify_selling_price);
- row("Allow Below Cost Sales",settings.allow_below_cost_sales);
- row("Allow Zero Price Sales",settings.allow_zero_price_sales);
- row("Shop ID",settings.shop_id||profile?.shop_id||"");
- section("OWNER");
- row("Owner",profile||{});
- section("WORKERS");
- workersRows.forEach((w:any)=>row("Worker",w));
  section("STOCK / PRODUCTS");
  remote.products.forEach((p:any)=>row("Product",p));
  section("CREDITORS");
@@ -302,12 +273,12 @@ function bindSettings(){
  remote.debtor_ledger.forEach((x:any)=>row("Ledger",x));
  section("LIFETIME TOTALS");
  row("Lifetime",lifetime);
+ section("90-DAY DATE-WISE FINANCIAL REPORT");
+ remote.daily_report_90_days.forEach((x:any)=>row(x.business_date,x));
  section("SALES - LAST 90 DAYS");
  remote.sales_90_days.forEach((x:any)=>row("Sale",x));
  section("PURCHASES - LAST 1 YEAR");
  remote.purchases_1_year.forEach((x:any)=>row("Purchase",x));
- section("AUDIT RECORDS");
- remote.audit.forEach((x:any)=>row("Audit",x));
  const reportText="SHOP MANAGEMENT - COMPLETE REPORT\\nGenerated: "+new Date().toLocaleString("en-IN",{dateStyle:"full",timeStyle:"medium"})+"\\n"+lines.join("\\n");
  await downloadText("Shop_Report_All_"+localDate()+".txt",reportText);
  notify("Complete shop report downloaded as TXT.","success");
