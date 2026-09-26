@@ -91,6 +91,34 @@ using (shop_id=(select shop_id from public.profiles where id=(select auth.uid())
 grant select on public.debtors to authenticated;
 grant select on public.debtor_ledger to authenticated;
 
+-- Backfill one credit-purchase ledger row for every historical purchase that
+-- already has a debtor and outstanding credit.
+insert into public.debtor_ledger(
+  shop_id,debtor_id,purchase_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,notes,created_at
+)
+select
+  pr.shop_id,
+  pr.debtor_id,
+  pr.id,
+  'credit_purchase',
+  pr.credit_amount,
+  'credit',
+  0,
+  0,
+  pr.purchased_by,
+  'Backfilled credit purchase',
+  pr.purchased_at
+from public.inventory_purchases pr
+join public.profiles pp on pp.id=pr.purchased_by
+where pr.debtor_id is not null
+  and coalesce(pr.credit_amount,0)>0
+  and not exists (
+    select 1 from public.debtor_ledger dl
+    where dl.purchase_id=pr.id and dl.type='credit_purchase'
+  );
+
+
+
 create or replace function public.normalize_debtor_mobile(p_mobile text)
 returns text
 language sql
