@@ -597,7 +597,7 @@ function bindSettings(){
  lines.push("","This report contains stock, outstanding creditor/debtor balances, and permanent 90-day date-wise financial aggregates.","It does not contain shop settings, owner/worker account information, or audit records.","");
  await downloadText("Shop_Report_All_"+localDate()+".txt",lines.join("\n"));
  notify("Complete shop report downloaded as TXT.","success");
-}catch(err){notify(errorMessage(err),"error")}});document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
+}catch(err){notify(errorMessage(err),"error")}});document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(confirm("Clear transaction data? This is permanent.")){const r=await supabase!.rpc("clear_all_shop_data_v2");if(r.error)return notify(r.error.message,"error");await loadData();render();notify("All transaction data cleared.","success")}});
 }
 
 function returnsView(){
