@@ -142,9 +142,9 @@ const server=http.createServer(async(req,res)=>{
       const token=s.tokens.access_token;
       await supa("/v1/projects/"+encodeURIComponent(ref)+"/database/query",token,{method:"POST",body:JSON.stringify({query:sql,read_only:false})});
       try{
-        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true})});
+        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true,mailer_allow_unverified_email_sign_ins:true})});
       }catch(e){
-        // SQL/database setup succeeded; auth settings may require auth:write scope.
+        return json(res,500,{error:"Database installed, but Supabase email confirmation could not be disabled automatically. Please make sure the OAuth app has Auth: Write permission, then authorize Shop Management again."});
       }
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
