@@ -113,18 +113,15 @@ async function register(){
       localStorage.setItem(URL_KEY,installed.url);
       localStorage.setItem(KEY_KEY,installed.key);
       const client=createClient(installed.url,installed.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
-      let auth=await client.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:"https://shop-management-storage-test.onrender.com"}});
-      if(auth.error && /already registered|already exists/i.test(auth.error.message||"")){
-        auth=await client.auth.signInWithPassword({email,password});
-      }
-      if(auth.error && !/already registered|already exists/i.test(auth.error.message||""))throw new Error(auth.error.message);
-      if(!auth.data.session){
-        message("Confirming your Shop Management email automatically...");
-        await api("/api/oauth/confirm-user",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email,setup_ticket:installed.setup_ticket})});
+      const owner=await api("/api/oauth/create-owner",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email,password,name,setup_ticket:installed.setup_ticket})});
+      if(owner?.error==="OWNER_ALREADY_REGISTERED"){
         const sign=await client.auth.signInWithPassword({email,password});
-        if(sign.error)throw new Error("Automatic email confirmation failed: "+sign.error.message);
+        if(sign.error)throw new Error("This email is already registered. Please use the correct owner password.");
+      }else if(!owner?.ok){
+        throw new Error(owner?.error||"Owner account creation failed.");
       }else{
-        await api("/api/oauth/confirm-user",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email,setup_ticket:installed.setup_ticket})});
+        const sign=await client.auth.signInWithPassword({email,password});
+        if(sign.error)throw new Error("Owner account was created, but automatic login failed: "+sign.error.message);
       }
       busy=false;
       location.reload();
