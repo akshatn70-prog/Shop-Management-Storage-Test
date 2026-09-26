@@ -196,8 +196,9 @@ function productForm(){
 }
 function purchaseForm(){
  const h=document.querySelector("#stockForm")!;
- h.innerHTML='<div class="panel"><h3>Record Purchase</h3><form id="purchaseFormInner" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min=".001" step=".001" required></label><label>Purchase price<input name="price" type="number" min="0" step=".01" required></label><label>Payment method<select name="payment"><option value="cash">Cash</option><option value="upi">UPI</option><option value="credit">Debt / Credit</option><option value="split">Cash + UPI</option><option value="pre_stock">Pre-stock recording</option></select></label><label id="purchaseCashBox" class="hidden">Cash<input name="cash" type="number" min="0" step=".01" value="0"></label><label id="purchaseUpiBox" class="hidden">UPI<input name="upi" type="number" min="0" step=".01" value="0"></label><label id="purchaseDebtorBox" class="hidden">Supplier credit/debtor<select name="debtor"><option value="">Select debtor</option>'+debtors.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' — '+esc(d.mobile)+'</option>').join("")+'<option value="__new__">＋ New Debtor</option></select></label><label>Supplier / Notes<input name="supplier" placeholder="Optional supplier name"></label><label class="check full"><input type="checkbox" name="prestock"> Pre-stock recording</label><div id="purchaseTotalPreview" class="full notice">Purchase, stock, payment split and supplier credit are saved atomically.</div><button class="primary full">Save Purchase</button></form></div>';
- const f=document.querySelector<HTMLFormElement>("#purchaseFormInner")!,mode=f.elements.namedItem("payment") as HTMLSelectElement,pre=f.elements.namedItem("prestock") as HTMLInputElement,db=f.elements.namedItem("debtor") as HTMLSelectElement,cashEl=f.elements.namedItem("cash") as HTMLInputElement,upiEl=f.elements.namedItem("upi") as HTMLInputElement;
+ h.innerHTML='<div class="panel"><h3>Record Purchase</h3><form id="purchaseFormInner" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min=".001" step=".001" required></label><label>Purchase price<input name="price" type="number" min="0" step=".01" required></label><label>Selling price<input name="selling" type="number" min="0" step=".01" required></label><label>Payment method<select name="payment"><option value="cash">Cash</option><option value="upi">UPI</option><option value="credit">Debt / Credit</option><option value="split">Cash + UPI</option><option value="pre_stock">Pre-stock recording</option></select></label><label id="purchaseCashBox" class="hidden">Cash<input name="cash" type="number" min="0" step=".01" value="0"></label><label id="purchaseUpiBox" class="hidden">UPI<input name="upi" type="number" min="0" step=".01" value="0"></label><label id="purchaseDebtorBox" class="hidden">Supplier credit/debtor<select name="debtor"><option value="">Select debtor</option>'+debtors.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' — '+esc(d.mobile)+'</option>').join("")+'<option value="__new__">＋ New Debtor</option></select></label><label>Supplier / Notes<input name="supplier" placeholder="Optional supplier name"></label><label class="check full"><input type="checkbox" name="prestock"> Pre-stock recording</label><div id="purchaseTotalPreview" class="full notice">Purchase, stock, selling price, payment split and supplier credit are saved atomically.</div><button class="primary full">Save Purchase</button></form></div>';
+ const f=document.querySelector<HTMLFormElement>("#purchaseFormInner")!,productEl=f.elements.namedItem("product") as HTMLSelectElement,sellingEl=f.elements.namedItem("selling") as HTMLInputElement,mode=f.elements.namedItem("payment") as HTMLSelectElement,pre=f.elements.namedItem("prestock") as HTMLInputElement,db=f.elements.namedItem("debtor") as HTMLSelectElement,cashEl=f.elements.namedItem("cash") as HTMLInputElement,upiEl=f.elements.namedItem("upi") as HTMLInputElement;
+ const syncSelling=()=>{const p=products.find(x=>x.id===productEl.value);if(p)sellingEl.value=String(p.selling_price_per_base_unit??0)};
  const sync=()=>{
   const v=mode.value,credit=v==="credit",split=v==="split";
   document.querySelector("#purchaseDebtorBox")?.classList.toggle("hidden",!credit);
@@ -207,12 +208,13 @@ function purchaseForm(){
   else {pre.disabled=false}
   if(!split){cashEl.value="0";upiEl.value="0"}
  };
+ productEl.addEventListener("change",syncSelling);syncSelling();
  mode.addEventListener("change",()=>{if(mode.value!=="credit")db.value="";sync()});sync();
  db.addEventListener("change",async()=>{if(db.value!=="__new__")return;const n=prompt("Supplier/debtor name"),mbl=prompt("Mobile number");if(!n?.trim()||!mbl?.trim()){db.value="";return}try{await createDebtor(n.trim(),mbl.trim());render();notify("Debtor registered. Select it for the purchase.","success")}catch(err){db.value="";notify(errorMessage(err),"error")}});
  f.addEventListener("submit",async e=>{
   e.preventDefault();
-  const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),q=Number(fd.get("qty")),pr=Number(fd.get("price")),pay=String(fd.get("payment")),prestock=fd.get("prestock")==="on"||pay==="pre_stock",debtor=String(fd.get("debtor")||"")||null;
-  if(!p||q<=0||pr<0)return notify("Invalid purchase details.","error");
+  const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),q=Number(fd.get("qty")),pr=Number(fd.get("price")),sell=Number(fd.get("selling")),pay=String(fd.get("payment")),prestock=fd.get("prestock")==="on"||pay==="pre_stock",debtor=String(fd.get("debtor")||"")||null;
+  if(!p||q<=0||pr<0||sell<0)return notify("Invalid purchase details.","error");
   const base=p.unit_type==="weight"?q:q;
   const total=p.unit_type==="weight"?base*pr/1000:base*pr;
   let cash=0,upi=0,credit=0;
@@ -222,13 +224,13 @@ function purchaseForm(){
   else if(pay==="credit"){if(!debtor)return notify("Select a debtor for credit purchase.","error");credit=total}
   if(prestock){cash=0;upi=0;credit=0}
   if(demo){
-   p.current_stock_base+=base;p.purchase_price_per_base_unit=pr;
-   if(!prestock)purchases.unshift({id:"q"+Date.now(),product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:q,purchase_unit:p.unit_type==="weight"?"grams":"piece",total_cost:total,purchase_price_per_base_unit:pr,purchased_at:new Date().toISOString(),purchased_by:profile!.id,payment_mode:pay,cash_amount:cash,upi_amount:upi,credit_amount:credit,pre_stock:false,debtor_id:debtor});
+   p.current_stock_base+=base;p.purchase_price_per_base_unit=pr;p.selling_price_per_base_unit=sell;
+   if(!prestock)purchases.unshift({id:"q"+Date.now(),product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:q,purchase_unit:p.unit_type==="weight"?"grams":"piece",total_cost:total,purchase_price_per_base_unit:pr,purchased_at:new Date().toISOString(),purchased_by:profile!.id,payment_mode:pay,cash_amount:cash,upi_amount:upi,credit_amount:credit,pre_stock:false,debtor_id:debtor,supplier_name:String(fd.get("supplier")||p.name)});
    if(credit>0&&debtor)debtorLedger.unshift({id:"dpl"+Date.now(),debtor_id:debtor,type:"credit_purchase",amount:credit,payment_mode:"credit",cash_amount:0,upi_amount:0,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
    notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success");render();return
   }
-  const r=await supabase!.rpc("add_inventory_purchase",{p_product_id:p.id,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:p.unit_type==="weight"?"grams":"piece",p_purchase_price:pr,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:prestock,p_supplier_name:String(fd.get("supplier")||"")});
-  if(r.error)return notify(r.error.message,"error");await loadData();render()
+  const r=await supabase!.rpc("add_inventory_purchase",{p_product_id:p.id,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:p.unit_type==="weight"?"grams":"piece",p_purchase_price:pr,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:prestock,p_supplier_name:String(fd.get("supplier")||p.name)});
+  if(r.error)return notify(errorMessage(r.error),"error");await loadData();render()
  });
 }
 async function createCreditor(name:string,mobile:string){
