@@ -92,11 +92,11 @@ function buildDemo(){
 }
 
 let demoData:ReturnType<typeof buildDemo>|null=null;
-function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=d.products;sales=d.sales;purchases=d.purchases;creditors=d.creditors;ledger=d.ledger;debtors=d.debtors;debtorLedger=d.debtorLedger;daily=d.daily;auditRows=d.audit;workersRows=d.workers;lifetime=d.lifetime;settings={shop_name:"Demo Grocery Store",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:true,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00"};profile=d.owner;demo=true;demoReady=true}
+function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=d.products;sales=d.sales;purchases=d.purchases;creditors=d.creditors;ledger=d.ledger;debtors=d.debtors;debtorLedger=d.debtorLedger;daily=d.daily;auditRows=d.audit;returnsRows=[];workersRows=d.workers;lifetime=d.lifetime;settings={shop_name:"Demo Grocery Store",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:true,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00"};profile=d.owner;demo=true;demoReady=true}
 function qBalance(id:string){return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
 function dBalance(id:string){return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
 function currentSales(){const today=businessDate();return sales.filter(s=>!s.voided&&businessDate(new Date(s.sold_at))===today)}
-function currentStats(){const a=currentSales();return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales:a.reduce((x,y)=>x+Number(y.total_sale||0),0),profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0),cash:a.reduce((x,y)=>x+Number(y.cash_amount||0),0),upi:a.reduce((x,y)=>x+Number(y.upi_amount||0),0),credit:a.reduce((x,y)=>x+Number(y.credit_amount||0),0)}}
+function currentStats(){const a=currentSales(),today=businessDate(),r=returnsRows.filter(x=>x.return_type==="sale"&&businessDate(new Date(x.returned_at))===today);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales:a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash:a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc,upi:a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru,credit:a.reduce((x,y)=>x+Number(y.credit_amount||0),0)-rcr}}
 
 async function loadData(){
  if(demo){if(!demoReady)initDemo();return}
@@ -117,7 +117,7 @@ async function loadData(){
   supabase.from("profiles").select("*").order("full_name")
  ]);
  if(set.data)settings={...settings,...set.data};
- products=p.data||[];sales=s.data||[];purchases=q.data||[];creditors=c.data||[];ledger=l.data||[];debtors=db.data||[];debtorLedger=dl.data||[];daily=df.data||[];lifetime=life.data||{lifetime_sales:0,lifetime_purchases:0,lifetime_profit:0};auditRows=au.data||[];workersRows=(wr.data||[]).map((x:any)=>({...x,role:x.role as Role}));
+ products=p.data||[];sales=s.data||[];purchases=q.data||[];creditors=c.data||[];ledger=l.data||[];debtors=db.data||[];debtorLedger=dl.data||[];daily=df.data||[];lifetime=life.data||{lifetime_sales:0,lifetime_purchases:0,lifetime_profit:0};auditRows=au.data||[];returnsRows=rr?.data||[];workersRows=(wr.data||[]).map((x:any)=>({...x,role:x.role as Role}));
 }
 
 function shell(title:string){
