@@ -485,7 +485,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path=''
-as $
+as $$
 declare
   v_shop text;
   v_tz text;
@@ -497,7 +497,7 @@ begin
   perform public.refresh_daily_financial_summary(v_shop,v_date);
   return coalesce(new,old);
 end;
-$;
+$$;
 
 drop trigger if exists debtor_financial_aggregate_trigger on public.debtor_ledger;
 create trigger debtor_financial_aggregate_trigger
