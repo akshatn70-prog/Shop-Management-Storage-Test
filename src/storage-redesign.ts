@@ -435,8 +435,19 @@ function bindCart(){
   const n=Number(qty.value);
   const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
   if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");
-  cartItems.push({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value),product_name_snapshot:p.name,purchase_price_per_base_unit:p.purchase_price_per_base_unit});
-  notify("Added to cart.","success");
+  const existing=cartItems.find(x=>x.product_id===p.id);
+  if(existing){
+   existing.quantity_base+=base;
+   existing.quantity_display+=n;
+   existing.sold_unit=unit.value;
+   existing.selling_price_per_base_unit=Number(price.value);
+   existing.product_name_snapshot=p.name;
+   existing.purchase_price_per_base_unit=p.purchase_price_per_base_unit;
+   notify("Product already in cart — quantity updated.","success");
+  }else{
+   cartItems.push({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value),product_name_snapshot:p.name,purchase_price_per_base_unit:p.purchase_price_per_base_unit});
+   notify("Added to cart.","success");
+  }
   render();
  });
 
@@ -482,6 +493,21 @@ function bindCart(){
  mode.addEventListener("change",()=>{const v=mode.value;if(v!=="credit"&&v!=="credit_split")cartCreditor.value="";toggle()});toggle();
  pay.addEventListener("submit",async e=>{
   e.preventDefault();
+  if(!cartItems.length)return notify("Add items first.","error");
+  // Normalize older carts that may already contain the same product more than once.
+  const merged:any[]=[];
+  for(const x of cartItems){
+   if(!x?.product_id||!products.some(p=>p.id===x.product_id))return notify("A cart item is no longer available. Delete it and add the product again.","error");
+   const existing=merged.find(y=>y.product_id===x.product_id);
+   if(existing){
+    existing.quantity_base+=Number(x.quantity_base)||0;
+    existing.quantity_display+=Number(x.quantity_display)||0;
+   }else{
+    merged.push({...x});
+   }
+  }
+  cartItems=merged;
+  const normalizedTotal=cartItems.reduce((a,x)=>a+(Number(x.quantity_base)||0)*(Number(x.selling_price_per_base_unit)||0),0);
   if(!cartItems.length)return notify("Add items first.","error");
   let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;
   if(mode.value==="cash"){c=total;u=0;cr=0}
@@ -576,7 +602,7 @@ function bindSettings(){
 
 function returnsView(){
  const owner=profile?.role==="owner";if(!owner)return '<section class="page"><div class="panel"><h2>Returns</h2><div class="notice danger">Returns are owner-only.</div></div></section>';
- return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary">&#8617; Purchase Return</button><button id="saleReturnBtn" class="ghost">&#8618; Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+returnsRows.slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc(r.products?.name||r.product_name_snapshot||"Deleted product")+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
+ return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary" type="button" title="Send purchased stock back to supplier">↩ Purchase Return</button><button id="saleReturnBtn" class="ghost" type="button" title="Return a customer's sale">↪ Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+returnsRows.slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc(r.products?.name||r.product_name_snapshot||"Deleted product")+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
 }
 function bindReturns(){document.querySelector("#purchaseReturnBtn")?.addEventListener("click",()=>returnForm("purchase"));document.querySelector("#saleReturnBtn")?.addEventListener("click",()=>returnForm("sale"))}
 function returnForm(type:"purchase"|"sale"){
