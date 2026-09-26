@@ -4722,7 +4722,6 @@ select pg_notify('pgrst','reload schema');
     else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
   end
 $;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -4761,7 +4760,6 @@ begin
   return r;
 end;
 $;
-
 revoke all on function public.get_or_create_debtor(text,text) from public,anon;
 grant execute on function public.get_or_create_debtor(text,text) to authenticated;
 
@@ -4838,7 +4836,6 @@ begin
   return d;
 end;
 $;
-
 revoke all on function public.pay_debtor(uuid,numeric,text,numeric,numeric) from public,anon;
 grant execute on function public.pay_debtor(uuid,numeric,text,numeric,numeric) to authenticated;
 
@@ -4966,7 +4963,6 @@ begin
     debtor_payment_total=excluded.debtor_payment_total,updated_at=now();
 end;
 $;
-
 revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
 grant execute on function public.refresh_daily_financial_summary(text,date) to authenticated;
 
@@ -4985,7 +4981,6 @@ begin
     updated_at=now();
 end;
 $;
-
 revoke all on function public.refresh_lifetime_financial_summary(text) from public,anon,authenticated;
 grant execute on function public.refresh_lifetime_financial_summary(text) to authenticated;
 
@@ -5919,7 +5914,6 @@ select pg_notify('pgrst','reload schema');
     else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
   end
 $;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -5958,7 +5952,6 @@ begin
   return r;
 end;
 $;
-
 revoke all on function public.get_or_create_debtor(text,text) from public,anon;
 grant execute on function public.get_or_create_debtor(text,text) to authenticated;
 
@@ -6035,7 +6028,6 @@ begin
   return d;
 end;
 $;
-
 revoke all on function public.pay_debtor(uuid,numeric,text,numeric,numeric) from public,anon;
 grant execute on function public.pay_debtor(uuid,numeric,text,numeric,numeric) to authenticated;
 
@@ -6163,7 +6155,6 @@ begin
     debtor_payment_total=excluded.debtor_payment_total,updated_at=now();
 end;
 $;
-
 revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
 grant execute on function public.refresh_daily_financial_summary(text,date) to authenticated;
 
@@ -6182,7 +6173,6 @@ begin
     updated_at=now();
 end;
 $;
-
 revoke all on function public.refresh_lifetime_financial_summary(text) from public,anon,authenticated;
 grant execute on function public.refresh_lifetime_financial_summary(text) to authenticated;
 
