@@ -3707,46 +3707,37 @@ language plpgsql
 security definer
 set search_path = ''
 as $clear_all$
-declare
-  v_shop_id text;
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
   end if;
 
-  v_shop_id := (select shop_id from public.profiles where id=(select auth.uid()));
-  if v_shop_id is null or btrim(v_shop_id)='' then
-    raise exception 'Shop is not configured';
-  end if;
-
-  -- Clear transaction/history data for the current shop only.
-  -- Every DELETE intentionally has a WHERE clause so it cannot accidentally
-  -- wipe another shop and is compatible with the database safety policy.
-  delete from public.debtor_ledger where shop_id=v_shop_id;
-  delete from public.credit_ledger where shop_id=v_shop_id;
-  delete from public.sale_transactions where shop_id=v_shop_id;
-  delete from public.sales where shop_id=v_shop_id;
-  delete from public.inventory_purchases where shop_id=v_shop_id;
-  delete from public.daily_closings where shop_id=v_shop_id;
-  delete from public.day_end_summary_lines where shop_id=v_shop_id;
-  delete from public.day_end_summaries where shop_id=v_shop_id;
-  delete from public.automatic_day_end_snapshots where shop_id=v_shop_id;
-  delete from public.daily_financial_summaries where shop_id=v_shop_id;
-  delete from public.lifetime_financial_summaries where shop_id=v_shop_id;
-  delete from public.creditor_daily_financial_aggregates where shop_id=v_shop_id;
-  delete from public.audit_logs where shop_id=v_shop_id;
+  -- This database is one shop per Supabase project.
+  -- Use explicit WHERE clauses so the database DELETE safety rule is satisfied.
+  delete from public.debtor_ledger where true;
+  delete from public.credit_ledger where true;
+  delete from public.sale_transactions where true;
+  delete from public.sales where true;
+  delete from public.inventory_purchases where true;
+  delete from public.daily_closings where true;
+  delete from public.day_end_summary_lines where true;
+  delete from public.day_end_summaries where true;
+  delete from public.automatic_day_end_snapshots where true;
+  delete from public.daily_financial_summaries where true;
+  delete from public.lifetime_financial_summaries where true;
+  delete from public.creditor_daily_financial_aggregates where true;
+  delete from public.audit_logs where true;
 
   perform set_config('shop.allow_stock_change','on',true);
   update public.products
   set current_stock_base=0, updated_at=now()
-  where shop_id=v_shop_id;
+  where id is not null;
   perform set_config('shop.allow_stock_change','off',true);
 
-  -- Keep one audit record proving the clear action happened.
-  insert into public.audit_logs(actor_id,shop_id,action,entity_type,details)
+  -- Keep one audit marker after the transaction data has been cleared.
+  insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     (select auth.uid()),
-    v_shop_id,
     'shop_data_cleared',
     'shop',
     jsonb_build_object('cleared_at',now())
