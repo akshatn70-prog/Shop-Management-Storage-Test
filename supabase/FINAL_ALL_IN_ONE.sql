@@ -3238,7 +3238,10 @@ end;
 $$;
 
 revoke all on function public.verify_shop_management(text) from public;
-grant execute on function public.verify_shop_management(text) to authenticated;
+-- Anonymous access is intentionally limited to the setup/installation check.
+-- The function only reports whether the required Shop Management schema exists;
+-- all actual application data remains protected by authentication and RLS.
+grant execute on function public.verify_shop_management(text) to anon, authenticated;
 
 create or replace function public.clear_all_shop_data()
 returns void
