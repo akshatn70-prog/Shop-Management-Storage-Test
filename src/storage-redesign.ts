@@ -185,10 +185,10 @@ function productForm(){
   if(r.error)return notify(r.error.message,"error");
   const productId=r.data as string;
   if(q>0){
-   const purchase=await supabase!.rpc("add_inventory_purchase",{p_product_id:productId,p_quantity_base:q,p_quantity_display:q,p_purchase_unit:unit==="weight"?"grams":"piece",p_purchase_price:buy,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
+   const purchase=await supabase!.rpc("add_inventory_purchase",{p_product_id:productId,p_quantity_base:q,p_quantity_display:q,p_purchase_unit:unit==="weight"?"grams":"piece",p_purchase_price:buy,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
    if(purchase.error){
     await supabase!.rpc("delete_product",{p_product_id:productId});
-    return notify(purchase.error.message,"error");
+    return notify(errorMessage(purchase.error),"error");
    }
   }
   await loadData();render()
