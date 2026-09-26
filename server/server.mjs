@@ -212,11 +212,50 @@ const server=http.createServer(async(req,res)=>{
         const detail=e instanceof Error?e.message:String(e);
         return json(res,500,{error:"Database installed, but Supabase Auth configuration failed.",detail});
       }
-      await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({site_url:"https://shop-management-storage-test.onrender.com",disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true})});
+      await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({site_url:"https://shop-management-storage-test.onrender.com",uri_allow_list:"https://shop-management-storage-test.onrender.com",disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true,mailer_templates_confirmation_content:"<h2>Confirm your email</h2><p><a href=\"{{ .ConfirmationURL }}\">Confirm email address</a></p>"})});
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
       const setup_ticket=makeSetupTicket({ref,access_token:token,created_at:Date.now()});
       return json(res,200,{ok:true,url,key,setup_ticket,project:{ref:project.ref,name:project.name}});
+    }
+    if(u.pathname==="/api/oauth/create-owner" && req.method==="POST"){
+      const b=await body(req),sessionId=String(b.session_id||""),ticket=String(b.setup_ticket||""),email=String(b.email||"").trim().toLowerCase(),password=String(b.password||""),name=String(b.name||"").trim();
+      let s=sessionId?sessions.get(sessionId):null,ref=String(b.project_ref||""),accessToken="";
+      if(ticket){
+        try{
+          const t=readSetupTicket(ticket);
+          if(Date.now()-Number(t.created_at||0)>20*60*1000)throw new Error("Registration setup ticket expired.");
+          ref=String(t.ref||ref);accessToken=String(t.access_token||"");
+        }catch(e){return json(res,400,{error:e instanceof Error?e.message:String(e)});}
+      }
+      if(!email||!password||!ref)return json(res,400,{error:"Email, password and project are required."});
+      if(password.length<6)return json(res,400,{error:"Password must be at least 6 characters."});
+      if(!accessToken){
+        if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready. Please restart registration."});
+        accessToken=s.tokens.access_token;
+      }
+      try{
+        const secret=await getSecretKey(ref,accessToken);
+        const listRes=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users?per_page=1000",{headers:{apikey:secret,Authorization:"Bearer "+secret,Accept:"application/json"}});
+        const list=await listRes.json().catch(()=>({}));
+        if(!listRes.ok)throw new Error((list?.msg||list?.message||"Supabase Auth admin request failed")+" (HTTP "+listRes.status+")");
+        const users=Array.isArray(list)?list:(list?.users||[]);
+        const existing=users.find(x=>String(x?.email||"").toLowerCase()===email);
+        if(existing){
+          if(!existing.email_confirmed_at){
+            const ur=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users/"+encodeURIComponent(existing.id),{method:"PUT",headers:{apikey:secret,Authorization:"Bearer "+secret,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({email_confirm:true})});
+            const ud=await ur.json().catch(()=>({}));
+            if(!ur.ok)throw new Error((ud?.msg||ud?.message||"Supabase could not confirm the owner email")+" (HTTP "+ur.status+")");
+            return json(res,200,{ok:true,confirmed:true,existing:true});
+          }
+          return json(res,409,{error:"OWNER_ALREADY_REGISTERED"});
+        }
+        const ur=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users",{method:"POST",headers:{apikey:secret,Authorization:"Bearer "+secret,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({email,password,email_confirm:true,user_metadata:{full_name:name}})});
+        const ud=await ur.json().catch(()=>({}));
+        if(!ur.ok)throw new Error((ud?.msg||ud?.message||"Supabase could not create the owner account")+" (HTTP "+ur.status+")");
+        if(sessionId)sessions.delete(sessionId);
+        return json(res,200,{ok:true,confirmed:true,created:true});
+      }catch(e){return json(res,500,{error:"The owner account could not be created automatically.",detail:e instanceof Error?e.message:String(e)});}
     }
     if(u.pathname==="/api/oauth/confirm-user" && req.method==="POST"){
       const b=await body(req),sessionId=String(b.session_id||""),ticket=String(b.setup_ticket||""),email=String(b.email||"").trim().toLowerCase();
