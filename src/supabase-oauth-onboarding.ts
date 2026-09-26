@@ -22,7 +22,10 @@ function message(text:string,type="info"){
 async function api(path:string,options:any={}){
   const r=await fetch(RENDER_BASE+path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(d.error||"Render setup server error");
+  if(!r.ok){
+    const detail=d.detail?String(d.detail):"";
+    throw new Error(detail?String(d.error||"Render setup server error")+" — "+detail:String(d.error||"Render setup server error"));
+  }
   return d;
 }
 async function finishDirectLogin(email:string,password:string){
