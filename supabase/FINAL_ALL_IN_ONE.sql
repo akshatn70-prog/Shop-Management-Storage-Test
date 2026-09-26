@@ -572,7 +572,7 @@ begin
 end;
 $purchase$;
 
-revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,numeric,numeric,numeric,uuid,boolean,text,numeric) from public,anon;
+revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) from public,anon;
 revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
 grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) to authenticated;
 
