@@ -2391,18 +2391,19 @@ begin
     perform set_config('shop.allow_stock_change','off',true);
   end loop;
 
-  -- Reconcile per-line UPI rounding for credit-split carts after all lines exist.
-  -- The transaction-level amount remains authoritative; the final line absorbs the cent remainder.
-  if actual_payment_mode='credit_split' then
+  -- Reconcile per-line payment rounding for split and credit-split carts.
+  -- The final line absorbs any cent remainder so line totals exactly match
+  -- the transaction-level cash/UPI amounts.
+  if actual_payment_mode in ('split','credit_split') then
     update public.sales s
-    set upi_amount=round(
-      greatest(
-        0,
-        upi_paid - coalesce((
+    set cash_amount=round(greatest(0,cash_paid-coalesce((
+          select sum(s2.cash_amount) from public.sales s2
+          where s2.transaction_id=v_tx_id and s2.id<>s.id
+        ),0)),2),
+        upi_amount=round(greatest(0,upi_paid-coalesce((
           select sum(s2.upi_amount) from public.sales s2
           where s2.transaction_id=v_tx_id and s2.id<>s.id
-        ),0)
-      ),2)
+        ),0)),2)
     where s.id=(
       select s3.id from public.sales s3
       where s3.transaction_id=v_tx_id
@@ -4017,8 +4018,8 @@ begin
     where w.shop_id=p_shop_id and not s.voided and public.business_date(s.sold_at)=p_business_date
   ) s on true
   left join lateral (
-    select coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.cash_amount else 0 end),0)::numeric cash_purchase,
-      coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.upi_amount else 0 end),0)::numeric upi_purchase,
+    select coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode in ('cash','split') then i.cash_amount else 0 end),0)::numeric cash_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode in ('upi','split') then i.upi_amount else 0 end),0)::numeric upi_purchase,
       coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.credit_amount else 0 end),0)::numeric credit_purchase,
       coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric total_purchase,
       coalesce(sum(case when coalesce(i.pre_stock,false) then i.total_cost else 0 end),0)::numeric pre_stock_purchase
