@@ -3221,9 +3221,7 @@ set search_path = ''
 as $$
 declare
   missing text[] := '{}';
-  sid text;
 begin
-  select shop_id into sid from public.shop_settings where id=1;
   if to_regclass('public.profiles') is null then missing:=array_append(missing,'profiles'); end if;
   if to_regclass('public.products') is null then missing:=array_append(missing,'products'); end if;
   if to_regclass('public.sales') is null then missing:=array_append(missing,'sales'); end if;
@@ -3233,7 +3231,7 @@ begin
   if to_regclass('public.daily_financial_summaries') is null then missing:=array_append(missing,'daily_financial_summaries'); end if;
   if to_regclass('public.lifetime_financial_summaries') is null then missing:=array_append(missing,'lifetime_financial_summaries'); end if;
   if to_regclass('public.audit_logs') is null then missing:=array_append(missing,'audit_logs'); end if;
-  return jsonb_build_object('ok',cardinality(missing)=0,'shop_id',sid,'missing',to_jsonb(missing));
+  return jsonb_build_object('ok',cardinality(missing)=0,'missing',to_jsonb(missing));
 end;
 $$;
 
