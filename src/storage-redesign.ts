@@ -31,7 +31,7 @@ const localDate=(d=new Date())=>new Intl.DateTimeFormat("en-CA",{timeZone:settin
 const fmt=(d:any)=>d?new Date(d).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):"";
 const notify=(m:string,t="info")=>{const x=document.createElement("div");x.className="toast "+t;x.textContent=m;document.body.appendChild(x);setTimeout(()=>x.remove(),2800)};
 const readConn=()=>({url:localStorage.getItem(URL_KEY)||"",key:localStorage.getItem(KEY_KEY)||""});
-const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key);return true}return false};
+const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return true}return false};
 const daysAgo=(n:number,h=12)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,15,0,0);return d.toISOString()};
 
 function buildDemo(){
@@ -723,7 +723,7 @@ function login(msg=""){
  const ensureConnection=(url:string,key:string)=>{
   if(!url||!key){renderConnection("Enter the Supabase URL and publishable key first.");return false}
   try{
-   supabase=createClient(url.replace(/\/$/,""),key);
+   supabase=createClient(url.replace(/\/$/,""),key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
   }catch(e){renderConnection(e instanceof Error?e.message:"Invalid Supabase connection details.");return false}
   localStorage.setItem(URL_KEY,url.replace(/\/$/,""));
   localStorage.setItem(KEY_KEY,key);
@@ -746,6 +746,15 @@ function login(msg=""){
    }
    if(!r.data?.ok){
     renderSetup(Array.isArray(r.data?.missing)?r.data.missing:[]);
+    return;
+   }
+   const sessionResult=await supabase!.auth.getSession();
+   if(sessionResult.error){
+    renderAuthError(sessionResult.error.message);
+    return;
+   }
+   if(sessionResult.data.session?.user){
+    await finishLogin(sessionResult.data.session.user.id);
     return;
    }
    renderAuth();
