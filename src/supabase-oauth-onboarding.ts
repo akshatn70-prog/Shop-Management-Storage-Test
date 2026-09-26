@@ -12,6 +12,32 @@ const esc=(s:any)=>String(s??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;"
 function localConnection(){
   return {url:localStorage.getItem(URL_KEY)||"",key:localStorage.getItem(KEY_KEY)||""};
 }
+const CONFIRM_FLAG="shop_management_email_confirmed";
+
+async function handleEmailConfirmationRedirect(){
+  const c=localConnection();
+  if(!c.url||!c.key)return false;
+
+  // Supabase's default confirmation email redirects back to the production
+  // website with the authenticated session in the URL hash. Process it here,
+  // then let the normal app load with the confirmed session.
+  const hash=window.location.hash||"";
+  if(!/access_token=|type=signup|type=email|error_code=/.test(hash))return false;
+
+  try{
+    const client=createClient(c.url,c.key,{
+      auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+    });
+    const sessionResult=await client.auth.getSession();
+    if(sessionResult.data.session?.user){
+      localStorage.setItem(CONFIRM_FLAG,String(Date.now()));
+    }
+  }catch{}
+
+  // Remove auth tokens/errors from the visible URL.
+  history.replaceState({},document.title,window.location.pathname+window.location.search);
+  return true;
+}
 function show(html:string){
   const app=document.querySelector("#app");if(app)app.innerHTML='<div class="login"><div class="login-card">'+html+"</div></div>";
 }
@@ -112,19 +138,51 @@ async function register(){
       const installed=await api("/api/oauth/install",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref})});
       localStorage.setItem(URL_KEY,installed.url);
       localStorage.setItem(KEY_KEY,installed.key);
+
+      // Keep normal Supabase email confirmation enabled. Supabase sends the
+      // confirmation email and redirects the user to the real production site.
       const client=createClient(installed.url,installed.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
-      const owner=await api("/api/oauth/create-owner",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email,password,name,setup_ticket:installed.setup_ticket})});
-      if(owner?.error==="OWNER_ALREADY_REGISTERED"){
-        const sign=await client.auth.signInWithPassword({email,password});
-        if(sign.error)throw new Error("This email is already registered. Please use the correct owner password.");
-      }else if(!owner?.ok){
-        throw new Error(owner?.error||"Owner account creation failed.");
-      }else{
-        const sign=await client.auth.signInWithPassword({email,password});
-        if(sign.error)throw new Error("Owner account was created, but automatic login failed: "+sign.error.message);
+      const signUp=await client.auth.signUp({
+        email,
+        password,
+        options:{
+          data:{full_name:name},
+          emailRedirectTo:window.location.origin
+        }
+      });
+      if(signUp.error)throw new Error(signUp.error.message);
+
+      localStorage.removeItem(CONFIRM_FLAG);
+      show('<div class="brand big">SHOP MANAGEMENT</div><h2>Confirm your email</h2><p class="muted">We sent a confirmation email to <b>'+esc(email)+'</b>.</p><div class="notice">Open the email and tap <b>Confirm your email address</b>. The confirmation link now goes to the real Shop Management website — not localhost.</div><div class="notice">Keep this page open. After you confirm the email, this page will automatically detect it, log you in and continue.</div><p id="confirmStatus" class="tiny">Waiting for email confirmation...</p>');
+
+      for(let i=0;i<180;i++){
+        await new Promise(r=>setTimeout(r,2000));
+
+        // First check the shared flag written by the confirmation redirect tab.
+        if(localStorage.getItem(CONFIRM_FLAG)){
+          const confirmed=await client.auth.signInWithPassword({email,password});
+          if(!confirmed.error){
+            localStorage.removeItem(CONFIRM_FLAG);
+            busy=false;
+            location.reload();
+            return;
+          }
+        }
+
+        // Also try direct sign-in. This covers confirmation links that stay in
+        // the same browser/session and makes the flow resilient across tabs.
+        const confirmed=await client.auth.signInWithPassword({email,password});
+        if(!confirmed.error){
+          busy=false;
+          location.reload();
+          return;
+        }
+
+        const status=document.querySelector("#confirmStatus");
+        if(status)status.textContent="Still waiting for confirmation… Please check your email.";
       }
-      busy=false;
-      location.reload();
+
+      throw new Error("Confirmation timed out. Confirm the email and start registration again if this page is no longer waiting.");
     }catch(e){busy=false;message(e instanceof Error?e.message:String(e),"danger")}
   });
 }
@@ -139,6 +197,11 @@ async function login(){
     catch(e){message(e instanceof Error?e.message:String(e),"danger")}
   });
 }
+async function start(){
+  await handleEmailConfirmationRedirect();
+  renderGate();
+}
+
 function renderGate(){
   const c=localConnection();
   if(c.url&&c.key){
@@ -159,4 +222,4 @@ const observer=new MutationObserver(()=>{
   if(!busy&&shouldTakeOver())renderGate();
 });
 observer.observe(document.documentElement,{subtree:true,childList:true});
-setTimeout(()=>{if(!busy&&shouldTakeOver())renderGate()},50);
+setTimeout(()=>{if(!busy&&shouldTakeOver())start()},50);
