@@ -575,56 +575,146 @@ function render(){
 }
 
 function login(msg=""){
- app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Sign in to your shop</h2><p class="muted">Connect directly to your Supabase project. Render is not required.</p>'+(msg?'<div class="notice danger">'+esc(msg)+'</div>':"")+'<form id="realLogin"><label>Supabase Project URL <span class="tiny">(first time on this device)</span><input name="url" placeholder="https://xxxxx.supabase.co"></label><label>Publishable Key <span class="tiny">(first time on this device)</span><input name="key" placeholder="sb_publishable_..."></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Connect & Sign In</button></form><div class="divider">NEW ACCOUNT</div><form id="createAccount"><label>Full name<input name="name" autocomplete="name"></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" minlength="6" autocomplete="new-password" required></label><button class="ghost wide">Create Account</button></form><p class="tiny">Your Supabase URL and publishable key are saved on this device after a successful connection. On a new or reinstalled device, enter them once again.</p></div></div>';
  const saved=readConn();
- const urlEl=document.querySelector('input[name="url"]') as HTMLInputElement;
- const keyEl=document.querySelector('input[name="key"]') as HTMLInputElement;
- if(saved.url)urlEl.value=saved.url;
- if(saved.key)keyEl.value=saved.key;
 
- const getConnection=(form:HTMLFormElement)=>{
-  const fd=new FormData(form);
-  const url=String(fd.get("url")||"").trim()||saved.url;
-  const key=String(fd.get("key")||"").trim()||saved.key;
-  return {fd,url,key};
+ const renderConnection=async(message="")=>{
+  app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Connect your database</h2><p class="muted">Enter your Supabase project details. The app connects directly to Supabase — Render is not required.</p>'+
+   (message?'<div class="notice danger">'+esc(message)+'</div>':"")+
+   '<form id="connectForm"><label>Supabase Project URL<input name="url" placeholder="https://xxxxx.supabase.co" value="'+esc(saved.url)+'" required></label>'+
+   '<label>Publishable Key<input name="key" placeholder="sb_publishable_..." value="'+esc(saved.key)+'" required></label>'+
+   '<button class="primary wide">Connect</button></form>'+
+   '<p class="tiny">Your URL and publishable key stay on this device. You will only need them again after reinstalling or using a new device.</p></div></div>';
+
+  document.querySelector<HTMLFormElement>("#connectForm")?.addEventListener("submit",async e=>{
+   e.preventDefault();
+   const f=e.currentTarget,fd=new FormData(f),url=String(fd.get("url")||"").trim(),key=String(fd.get("key")||"").trim();
+   if(!url||!key)return notify("Enter both the Supabase URL and publishable key.","error");
+   await checkDatabase(url,key);
+  });
  };
+
+ const renderSetup=(missing:any[]=[])=>{
+  const list=Array.isArray(missing)&&missing.length?'<ul class="tiny">'+missing.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>':"";
+  app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Database not set up</h2>'+
+   '<p class="muted">This Supabase project is connected, but the Shop Management database has not been installed yet.</p>'+
+   (list?'<div class="notice warning"><b>Missing:</b>'+list+'</div>':"")+
+   '<div class="notice"><b>One-time setup</b><br>Copy the database SQL below, run it once in your Supabase SQL Editor, then return here and check again.</div>'+
+   '<button id="copyDatabaseSql" class="primary wide">Copy Database SQL</button>'+
+   '<button id="downloadDatabaseSql" class="ghost wide">Download SQL</button>'+
+   '<button id="checkDatabaseAgain" class="ghost wide">I\'ve Installed It — Check Again</button>'+
+   '<button id="changeDatabaseFromSetup" class="ghost wide">Change Supabase Project</button>'+
+   '<p class="tiny">The SQL is the same final Shop Management database schema included with this app. No Render server is required.</p></div></div>';
+
+  document.querySelector("#copyDatabaseSql")?.addEventListener("click",async()=>{
+   try{
+    const rr=await fetch("/shop-management-final.sql");
+    if(!rr.ok)throw new Error("SQL file unavailable.");
+    const sql=await rr.text();
+    try{
+     await navigator.clipboard.writeText(sql);
+    }catch{
+     const ta=document.createElement("textarea");ta.value=sql;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();
+     const ok=document.execCommand("copy");ta.remove();if(!ok)throw new Error("Clipboard access was blocked.");
+    }
+    notify("Database SQL copied. Paste it into Supabase SQL Editor.","success");
+   }catch(e){notify(e instanceof Error?e.message:String(e),"error")}
+  });
+  document.querySelector("#downloadDatabaseSql")?.addEventListener("click",async()=>{
+   try{
+    const rr=await fetch("/shop-management-final.sql");
+    if(!rr.ok)throw new Error("SQL file unavailable.");
+    await downloadText("shop-management-final.sql",await rr.text());
+   }catch(e){notify(e instanceof Error?e.message:String(e),"error")}
+  });
+  document.querySelector("#checkDatabaseAgain")?.addEventListener("click",()=>checkDatabase(readConn().url,readConn().key));
+  document.querySelector("#changeDatabaseFromSetup")?.addEventListener("click",()=>renderConnection());
+ };
+
+ const renderAuth=()=>{
+  app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Sign in to your shop</h2><div class="notice ok">✓ Database is ready</div>'+
+   '<p class="muted">Connected directly to your Supabase project.</p>'+
+   '<form id="realLogin"><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Sign In</button></form>'+
+   '<div class="divider">NEW ACCOUNT</div><form id="createAccount"><label>Full name<input name="name" autocomplete="name"></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" minlength="6" autocomplete="new-password" required></label><button class="ghost wide">Create Account</button></form>'+
+   '<button id="changeDatabase" class="ghost wide">Change Supabase Project</button>'+
+   '<p class="tiny">Supabase URL and publishable key are saved on this device, so future logins only need your email and password.</p></div></div>';
+
+  document.querySelector("#changeDatabase")?.addEventListener("click",()=>renderConnection());
+
+  document.querySelector<HTMLFormElement>("#realLogin")?.addEventListener("submit",async e=>{
+   e.preventDefault();
+   const f=e.currentTarget,fd=new FormData(f),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+   if(!email||!password)return notify("Enter your email and password.","error");
+   const r=await supabase!.auth.signInWithPassword({email,password});
+   if(r.error)return renderAuthError(r.error.message);
+   await finishLogin(r.data.user.id);
+  });
+
+  document.querySelector<HTMLFormElement>("#createAccount")?.addEventListener("submit",async e=>{
+   e.preventDefault();
+   const f=e.currentTarget,fd=new FormData(f),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+   if(!email||!password)return notify("Enter your email and password.","error");
+   const r=await supabase!.auth.signUp({email,password,options:{data:{full_name:name}}});
+   if(r.error)return renderAuthError(r.error.message);
+   if(r.data.session&&r.data.user){await finishLogin(r.data.user.id);return}
+   renderAuthError("Account created, but this Supabase project is requiring email confirmation. Disable email confirmation in Supabase Auth settings, then sign in here.");
+  });
+ };
+
+ const renderAuthError=(message:string)=>{
+  renderAuth();
+  const card=document.querySelector(".login-card");
+  if(card){const n=document.createElement("div");n.className="notice danger";n.textContent=message;card.insertBefore(n,card.querySelector("#realLogin"))}
+ };
+
  const ensureConnection=(url:string,key:string)=>{
-  if(!url||!key){notify("Enter the Supabase URL and publishable key on this device first.","error");return false}
-  supabase=createClient(url,key);
-  localStorage.setItem(URL_KEY,url);
+  if(!url||!key){renderConnection("Enter the Supabase URL and publishable key first.");return false}
+  try{
+   supabase=createClient(url.replace(/\\/$/,""),key);
+  }catch(e){renderConnection(e instanceof Error?e.message:"Invalid Supabase connection details.");return false}
+  localStorage.setItem(URL_KEY,url.replace(/\\/$/,""));
   localStorage.setItem(KEY_KEY,key);
   return true;
  };
+
+ const checkDatabase=async(url:string,key:string)=>{
+  if(!ensureConnection(url,key))return;
+  app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Checking database...</h2><p class="muted">Connecting directly to Supabase and checking the Shop Management schema.</p><div class="notice">Please wait...</div></div></div>';
+  try{
+   const r=await supabase!.rpc("verify_shop_management",{p_expected_shop_id:""});
+   if(r.error){
+    const text=String(r.error.message||"");
+    if(/verify_shop_management|schema cache|does not exist/i.test(text)){
+     renderSetup(["Shop Management verification function"]);
+     return;
+    }
+    renderConnection("Could not check this Supabase project: "+text);
+    return;
+   }
+   if(!r.data?.ok){
+    renderSetup(Array.isArray(r.data?.missing)?r.data.missing:[]);
+    return;
+   }
+   renderAuth();
+  }catch(e){
+   renderConnection("Could not connect to this Supabase project. Check the URL, publishable key, and internet connection.");
+  }
+ };
+
  const finishLogin=async(userId:string)=>{
   const p=await supabase!.from("profiles").select("*").eq("id",userId).single();
-  if(p.error)return login(p.error.message);
+  if(p.error)return renderAuthError(p.error.message);
   profile={...p.data,role:p.data.role as Role} as Profile;
-  if(!profile.is_active)return login("This account is not active in the connected database.");
+  if(!profile.is_active)return renderAuthError("This account is not active in the connected database.");
   demo=false;demoReady=false;await loadData();render();
  };
 
- document.querySelector<HTMLFormElement>("#realLogin")?.addEventListener("submit",async e=>{
-  e.preventDefault();
-  const f=e.currentTarget, {fd,url,key}=getConnection(f),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
-  if(!ensureConnection(url,key)||!email||!password)return;
-  const r=await supabase!.auth.signInWithPassword({email,password});
-  if(r.error)return login(r.error.message);
-  await finishLogin(r.data.user.id);
- });
-
- document.querySelector<HTMLFormElement>("#createAccount")?.addEventListener("submit",async e=>{
-  e.preventDefault();
-  const f=e.currentTarget, {fd,url,key}=getConnection(f),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
-  if(!ensureConnection(url,key)||!email||!password)return;
-  const r=await supabase!.auth.signUp({email,password,options:{data:{full_name:name}}});
-  if(r.error)return notify(r.error.message,"error");
-  if(r.data.session&&r.data.user){
-   await finishLogin(r.data.user.id);
-   return;
-  }
-  notify("Account created. If this Supabase project requires email confirmation, disable email confirmation in Supabase Auth settings, then sign in here.","info");
- });
-
+ if(msg){
+  renderConnection(msg);
+ }else if(saved.url&&saved.key){
+  checkDatabase(saved.url,saved.key);
+ }else{
+  renderConnection();
+ }
 }
 
 connect();login();
