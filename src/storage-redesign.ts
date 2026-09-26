@@ -669,9 +669,9 @@ function login(msg=""){
  const ensureConnection=(url:string,key:string)=>{
   if(!url||!key){renderConnection("Enter the Supabase URL and publishable key first.");return false}
   try{
-   supabase=createClient(url.replace(/\\/$/,""),key);
+   supabase=createClient(url.replace(/\/$/,""),key);
   }catch(e){renderConnection(e instanceof Error?e.message:"Invalid Supabase connection details.");return false}
-  localStorage.setItem(URL_KEY,url.replace(/\\/$/,""));
+  localStorage.setItem(URL_KEY,url.replace(/\/$/,""));
   localStorage.setItem(KEY_KEY,key);
   return true;
  };
