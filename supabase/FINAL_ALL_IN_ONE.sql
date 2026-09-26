@@ -2673,8 +2673,64 @@ alter table public.inventory_purchases
 
 update public.inventory_purchases
 set pre_stock = true,
-    payment_mode = 'pre_stock'
+    payment_mode = 'pre_stock',
+    cash_amount = 0,
+    upi_amount = 0,
+    credit_amount = 0,
+    credit_paid = 0
 where payment_mode is null or payment_mode = '';
+
+-- Repair legacy rows created before purchase payment fields existed.
+update public.inventory_purchases
+set payment_mode = 'cash',
+    pre_stock = false,
+    cash_amount = round(total_cost,2),
+    upi_amount = 0,
+    credit_amount = 0,
+    credit_paid = 0
+where coalesce(pre_stock,false)=false
+  and payment_mode='pre_stock'
+  and coalesce(cash_amount,0)=0
+  and coalesce(upi_amount,0)=0
+  and coalesce(credit_amount,0)=0
+  and total_cost > 0;
+
+-- Normalize any remaining inconsistent non-pre-stock rows.
+update public.inventory_purchases
+set payment_mode = case
+      when abs(coalesce(cash_amount,0)+coalesce(upi_amount,0)-total_cost) <= 0.01
+           and coalesce(cash_amount,0) > 0 and coalesce(upi_amount,0) > 0 then 'split'
+      when abs(coalesce(upi_amount,0)-total_cost) <= 0.01 then 'upi'
+      when abs(coalesce(cash_amount,0)-total_cost) <= 0.01 then 'cash'
+      when abs(coalesce(credit_amount,0)-total_cost) <= 0.01 then 'credit'
+      else 'cash'
+    end,
+    pre_stock = false,
+    cash_amount = case
+      when abs(coalesce(cash_amount,0)+coalesce(upi_amount,0)-total_cost) <= 0.01
+           and coalesce(cash_amount,0) > 0 and coalesce(upi_amount,0) > 0 then round(coalesce(cash_amount,0),2)
+      when abs(coalesce(upi_amount,0)-total_cost) <= 0.01 then 0
+      when abs(coalesce(credit_amount,0)-total_cost) <= 0.01 then 0
+      else round(total_cost,2)
+    end,
+    upi_amount = case
+      when abs(coalesce(cash_amount,0)+coalesce(upi_amount,0)-total_cost) <= 0.01
+           and coalesce(cash_amount,0) > 0 and coalesce(upi_amount,0) > 0 then round(coalesce(upi_amount,0),2)
+      when abs(coalesce(upi_amount,0)-total_cost) <= 0.01 then round(total_cost,2)
+      else 0
+    end,
+    credit_amount = case
+      when abs(coalesce(credit_amount,0)-total_cost) <= 0.01 then round(total_cost,2)
+      else 0
+    end,
+    credit_paid = 0
+where coalesce(pre_stock,false)=false
+  and not (
+    (payment_mode='cash' and abs(coalesce(cash_amount,0)-total_cost)<=0.01 and coalesce(upi_amount,0)=0 and coalesce(credit_amount,0)=0)
+    or (payment_mode='upi' and abs(coalesce(upi_amount,0)-total_cost)<=0.01 and coalesce(cash_amount,0)=0 and coalesce(credit_amount,0)=0)
+    or (payment_mode='split' and abs(coalesce(cash_amount,0)+coalesce(upi_amount,0)-total_cost)<=0.01 and coalesce(credit_amount,0)=0)
+    or (payment_mode='credit' and abs(coalesce(credit_amount,0)-total_cost)<=0.01 and coalesce(cash_amount,0)=0 and coalesce(upi_amount,0)=0)
+  );
 
 alter table public.inventory_purchases
   drop constraint if exists inventory_purchases_payment_check;
