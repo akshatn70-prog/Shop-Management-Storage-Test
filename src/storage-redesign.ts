@@ -574,6 +574,30 @@ function render(){
  addSwipeHints();
 }
 
+function splitSqlForMobile(sql:string,maxChars=18000){
+ const statements:string[]=[];let start=0,i=0,quote:""|"'"|"\""="",dollarTag:string|null=null,lineComment=false,blockComment=false;
+ while(i<sql.length){
+  const c=sql[i],n=sql[i+1];
+  if(lineComment){if(c==="\\n")lineComment=false;i++;continue}
+  if(blockComment){if(c==="*"&&n==="/"){blockComment=false;i+=2;continue}i++;continue}
+  if(dollarTag){if(sql.startsWith(dollarTag,i)){i+=dollarTag.length;dollarTag=null;continue}i++;continue}
+  if(quote==="'"){if(c==="'"&&n==="'"){i+=2;continue}if(c==="'")quote="";i++;continue}
+  if(quote==="\\\""){if(c==="\\\""&&n==="\\\""){i+=2;continue}if(c==="\\\"")quote="";i++;continue}
+  if(c==="-"&&n==="-"){lineComment=true;i+=2;continue}
+  if(c==="/"&&n==="*"){blockComment=true;i+=2;continue}
+  if(c==="'"){quote="'";i++;continue}
+  if(c==="\\\""){quote="\\\"";i++;continue}
+  if(c==="$"){const m=sql.slice(i).match(/^\\$[A-Za-z_][A-Za-z0-9_]*\\$|^\\$\\$/);if(m){dollarTag=m[0];i+=m[0].length;continue}}
+  if(c===";"){statements.push(sql.slice(start,i+1));start=i+1}
+  i++;
+ }
+ if(start<sql.length)statements.push(sql.slice(start));
+ const chunks:string[]=[];let cur="";
+ for(const st of statements){if(cur&&cur.length+st.length>maxChars){chunks.push(cur);cur=""}cur+=st}
+ if(cur)chunks.push(cur);
+ return chunks;
+}
+
 function login(msg=""){
  const saved=readConn();
 
@@ -600,6 +624,8 @@ function login(msg=""){
    (list?'<div class="notice warning"><b>Missing:</b>'+list+'</div>':"")+
    '<div class="notice"><b>One-time setup</b><br>Copy the database SQL below, run it once in your Supabase SQL Editor, then return here and check again.</div>'+
    '<button id="copyDatabaseSql" class="primary wide">Copy Database SQL</button>'+
+   '<button id="mobileSqlParts" class="ghost wide">Copy SQL in Parts (Mobile)</button>'+
+   '<div id="mobileSqlPartList"></div>'+
    '<button id="downloadDatabaseSql" class="ghost wide">Download SQL</button>'+
    '<button id="checkDatabaseAgain" class="ghost wide">I\'ve Installed It — Check Again</button>'+
    '<button id="changeDatabaseFromSetup" class="ghost wide">Change Supabase Project</button>'+
@@ -619,6 +645,34 @@ function login(msg=""){
     notify("Database SQL copied. Paste it into Supabase SQL Editor.","success");
    }catch(e){notify(e instanceof Error?e.message:String(e),"error")}
   });
+  document.querySelector("#mobileSqlParts")?.addEventListener("click",async()=>{
+   const host=document.querySelector("#mobileSqlPartList") as HTMLElement|null,button=document.querySelector("#mobileSqlParts") as HTMLButtonElement|null;
+   if(!host)return;
+   try{
+    if(button){button.disabled=true;button.textContent="Preparing SQL parts..."}
+    const rr=await fetch("/shop-management-final.sql");
+    if(!rr.ok)throw new Error("SQL file unavailable.");
+    const parts=splitSqlForMobile(await rr.text());
+    host.innerHTML='<div class="notice"><b>Mobile setup:</b> '+parts.length+' safe parts. Copy, paste, and <b>Run each part in order</b>.</div>'+
+      parts.map((_,i)=>'<button type="button" class="ghost wide sql-part" data-part="'+i+'">Copy SQL Part '+(i+1)+' of '+parts.length+'</button>').join("");
+    host.querySelectorAll<HTMLButtonElement>(".sql-part").forEach(btn=>btn.addEventListener("click",async()=>{
+      const index=Number(btn.dataset.part||-1),sql=parts[index];
+      if(!sql)return;
+      try{
+       await navigator.clipboard.writeText(sql);
+      }catch{
+       const ta=document.createElement("textarea");ta.value=sql;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();
+       const ok=document.execCommand("copy");ta.remove();if(!ok)throw new Error("Clipboard access was blocked.");
+      }
+      notify("SQL Part "+(index+1)+" copied. Paste and Run it before continuing to the next part.","success");
+    }));
+    if(button){button.disabled=false;button.textContent="Refresh SQL Parts"}
+   }catch(e){
+    if(button){button.disabled=false;button.textContent="Copy SQL in Parts (Mobile)"}
+    notify(e instanceof Error?e.message:String(e),"error")
+   }
+  });
+ 
   document.querySelector("#downloadDatabaseSql")?.addEventListener("click",async()=>{
    try{
     const rr=await fetch("/shop-management-final.sql");
