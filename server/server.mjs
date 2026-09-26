@@ -32,6 +32,23 @@ function html(res,status,body){
   res.end(body);
 }
 function random(size=32){return crypto.randomBytes(size).toString("base64url")}
+function ticketKey(){return crypto.createHash("sha256").update(OAUTH_TICKET_SECRET).digest()}
+function makeSetupTicket(payload){
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv("aes-256-gcm",ticketKey(),iv);
+  const text=JSON.stringify(payload);
+  const enc=Buffer.concat([cipher.update(text,"utf8"),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return Buffer.concat([iv,tag,enc]).toString("base64url");
+}
+function readSetupTicket(ticket){
+  const raw=Buffer.from(String(ticket||""),"base64url");
+  if(raw.length<28)throw new Error("Invalid registration setup ticket.");
+  const iv=raw.subarray(0,12),tag=raw.subarray(12,28),enc=raw.subarray(28);
+  const decipher=crypto.createDecipheriv("aes-256-gcm",ticketKey(),iv);
+  decipher.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([decipher.update(enc),decipher.final()]).toString("utf8"));
+}
 function pkceChallenge(verifier){return crypto.createHash("sha256").update(verifier).digest("base64url")}
 function body(req){
   return new Promise((resolve,reject)=>{
@@ -195,19 +212,34 @@ const server=http.createServer(async(req,res)=>{
         const detail=e instanceof Error?e.message:String(e);
         return json(res,500,{error:"Database installed, but Supabase Auth configuration failed.",detail});
       }
+      await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({site_url:"https://shop-management-storage-test.onrender.com",disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true})});
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
-      return json(res,200,{ok:true,url,key,project:{ref:project.ref,name:project.name}});
+      const setup_ticket=makeSetupTicket({ref,access_token:token,created_at:Date.now()});
+      return json(res,200,{ok:true,url,key,setup_ticket,project:{ref:project.ref,name:project.name}});
     }
     if(u.pathname==="/api/oauth/confirm-user" && req.method==="POST"){
-      const b=await body(req),s=sessions.get(String(b.session_id||"")),ref=String(b.project_ref||""),email=String(b.email||"").trim().toLowerCase();
-      if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready."});
-      if(!ref||!email)return json(res,400,{error:"Project and email are required."});
-      const project=(s.projects||[]).find(p=>p.ref===ref);
+      const b=await body(req),sessionId=String(b.session_id||""),ticket=String(b.setup_ticket||""),email=String(b.email||"").trim().toLowerCase();
+      let s=sessionId?sessions.get(sessionId):null;
+      let ref=String(b.project_ref||""),accessToken="";
+      if(ticket){
+        try{
+          const t=readSetupTicket(ticket);
+          if(Date.now()-Number(t.created_at||0)>20*60*1000)throw new Error("Registration setup ticket expired.");
+          ref=String(t.ref||ref);accessToken=String(t.access_token||"");
+        }catch(e){return json(res,400,{error:e instanceof Error?e.message:String(e)});}
+      }
+      if(!email||!ref)return json(res,400,{error:"Project and email are required."});
+      if(!accessToken){
+        if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready. Please restart registration."});
+        accessToken=s.tokens.access_token;
+      }
+      const project=s?.projects?.find(p=>p.ref===ref);
+      if(s && !project)return json(res,400,{error:"Selected Supabase project was not found in your account."});
       if(!project)return json(res,400,{error:"Selected Supabase project was not found in your account."});
       if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))return json(res,400,{error:"Enter a valid email address."});
       try{
-        const secret=await getSecretKey(ref,s.tokens.access_token);
+        const secret=await getSecretKey(ref,accessToken);
         const r=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users?per_page=1000",{
           headers:{apikey:secret,Authorization:"Bearer "+secret,Accept:"application/json"}
         });
@@ -225,7 +257,7 @@ const server=http.createServer(async(req,res)=>{
           const ud=await ur.json().catch(()=>({}));
           if(!ur.ok)throw new Error((ud?.msg||ud?.message||"Supabase could not confirm the owner email")+" (HTTP "+ur.status+")");
         }
-        sessions.delete(String(b.session_id||""));
+        if(sessionId)sessions.delete(sessionId);
         return json(res,200,{ok:true,confirmed:true});
       }catch(e){
         return json(res,500,{error:"The owner account was created, but automatic email confirmation failed.",detail:e instanceof Error?e.message:String(e)});
