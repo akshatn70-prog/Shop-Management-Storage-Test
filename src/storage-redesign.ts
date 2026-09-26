@@ -575,19 +575,19 @@ function render(){
 }
 
 function splitSqlForMobile(sql:string,maxChars=18000){
- const statements:string[]=[];let start=0,i=0,quote:""|"'"|"\""="",dollarTag:string|null=null,lineComment=false,blockComment=false;
+ const statements:string[]=[];let start=0,i=0,quote:string="",dollarTag:string|null=null,lineComment=false,blockComment=false;
  while(i<sql.length){
   const c=sql[i],n=sql[i+1];
-  if(lineComment){if(c==="\\n")lineComment=false;i++;continue}
+  if(lineComment){if(c==="\n")lineComment=false;i++;continue}
   if(blockComment){if(c==="*"&&n==="/"){blockComment=false;i+=2;continue}i++;continue}
   if(dollarTag){if(sql.startsWith(dollarTag,i)){i+=dollarTag.length;dollarTag=null;continue}i++;continue}
   if(quote==="'"){if(c==="'"&&n==="'"){i+=2;continue}if(c==="'")quote="";i++;continue}
-  if(quote==="\\\""){if(c==="\\\""&&n==="\\\""){i+=2;continue}if(c==="\\\"")quote="";i++;continue}
+  if(quote==='"'){if(c==='"'&&n==='"'){i+=2;continue}if(c==='"')quote="";i++;continue}
   if(c==="-"&&n==="-"){lineComment=true;i+=2;continue}
   if(c==="/"&&n==="*"){blockComment=true;i+=2;continue}
   if(c==="'"){quote="'";i++;continue}
-  if(c==="\\\""){quote="\\\"";i++;continue}
-  if(c==="$"){const m=sql.slice(i).match(/^\\$[A-Za-z_][A-Za-z0-9_]*\\$|^\\$\\$/);if(m){dollarTag=m[0];i+=m[0].length;continue}}
+  if(c==='"'){quote='"';i++;continue}
+  if(c==="$"){const m=sql.slice(i).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);if(m){dollarTag=m[0];i+=m[0].length;continue}}
   if(c===";"){statements.push(sql.slice(start,i+1));start=i+1}
   i++;
  }
