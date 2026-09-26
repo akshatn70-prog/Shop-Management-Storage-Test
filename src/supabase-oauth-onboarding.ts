@@ -35,7 +35,7 @@ async function finishDirectLogin(email:string,password:string){
 }
 async function register(){
   if(busy)return;busy=true;
-  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Register Shop Owner</h2><p class="muted">This one-time process connects your own Supabase account, installs the database automatically, and then signs you in.</p><form id="ownerReg"><label>Full name<input name="name" autocomplete="name" required></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" minlength="6" autocomplete="new-password" required></label><button class="primary wide">Connect Supabase & Register</button></form><button id="backLogin" class="ghost wide">Back to Login</button>');
+  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Register Shop Owner</h2><p class="muted">Create your Shop Management owner account. Next, you will connect the Supabase account that should own this shop.</p><div class="notice">Your Shop Management email and password are separate from your Supabase Dashboard login. Your Supabase password is never entered or stored here.</div><form id="ownerReg"><label>Full name<input name="name" autocomplete="name" required></label><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" minlength="6" autocomplete="new-password" required></label><button class="primary wide">Connect Supabase & Register</button></form><button id="backLogin" class="ghost wide">Back to Login</button>');
   document.querySelector("#backLogin")?.addEventListener("click",()=>{busy=false;renderGate()});
   document.querySelector("#ownerReg")?.addEventListener("submit",async e=>{
     e.preventDefault();
@@ -44,7 +44,7 @@ async function register(){
     try{
       message("Starting secure Supabase authorization...");
       const start=await api("/api/oauth/start",{method:"POST",body:"{}"});
-      message("Supabase opened. Sign in and press Allow. Keep this app open while you authorize.");
+      message("Supabase opened. Sign in with the Supabase account that should own this shop, then press Allow. Your Supabase password stays on Supabase.");
       if(Capacitor.isNativePlatform()){
         try{await Browser.open({url:start.authorize_url})}catch{window.open(start.authorize_url,"_blank")}
       }else{
@@ -59,9 +59,8 @@ async function register(){
       if(!ready)throw new Error("Supabase authorization timed out. Start registration again.");
       const projects=ready.projects||[];
       const organizations=ready.organizations||[];
-      let ref=projects.length===1?projects[0].ref:"";
-      if(!ref){
-        show('<div class="brand big">SHOP MANAGEMENT</div><h2>Choose your Supabase project</h2><p class="muted">Use an existing project or create a new one automatically.</p><div class="notice">Your existing projects are listed below.</div><select id="projectPick" class="wide"><option value="">Select existing project...</option>'+projects.map((p:any)=>'<option value="'+esc(p.ref)+'">'+esc(p.name)+" — "+esc(p.region||"")+'</option>').join("")+'</select><button id="installSelected" class="primary wide">Use Existing Project</button><div style="text-align:center;margin:14px 0;color:#64748b">OR</div><button id="newProject" class="ghost wide">Create New Supabase Project</button>');
+      let ref="";
+      show('<div class="brand big">SHOP MANAGEMENT</div><h2>Connect your Supabase account</h2><p class="muted">You are now connected to the Supabase account you authorized. Choose where this shop should be stored.</p><div class="notice">Use the existing project you want, or create a new Supabase project in your authorized account. Shop Management never receives your Supabase password.</div>'+(projects.length?'<label>Existing project<select id="projectPick" class="wide"><option value="">Select existing project...</option>'+projects.map((p:any)=>'<option value="'+esc(p.ref)+'">'+esc(p.name)+" — "+esc(p.region||"")+'</option>').join("")+'</select></label><button id="installSelected" class="primary wide">Use Existing Project</button>':'<div class="notice">No existing Supabase projects were found in this account.</div>')+'<div style="text-align:center;margin:14px 0;color:#64748b">OR</div><button id="newProject" class="ghost wide">Create New Supabase Project</button>');
         await new Promise<void>((resolve,reject)=>{
           document.querySelector("#installSelected")?.addEventListener("click",()=>{
             const v=String((document.querySelector("#projectPick") as HTMLSelectElement).value||"");
@@ -106,7 +105,7 @@ async function register(){
 }
 async function login(){
   if(busy)return;busy=true;
-  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><p class="muted">Your Supabase connection is already saved on this device. Render is not used for normal login.</p><form id="localLogin"><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="registerInstead" class="ghost wide">Register / Connect Supabase</button><p class="tiny">After registration, this Login works directly against your Supabase project, even if Render is offline.</p>');
+  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><p class="muted">Your Supabase connection is already saved on this device. Render is not used for normal login.</p><form id="localLogin"><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="registerInstead" class="ghost wide">Register / Connect Supabase</button><p class="tiny">After registration, this Login works directly against your Supabase project, even if Render is offline.</p>');
   document.querySelector("#registerInstead")?.addEventListener("click",()=>{busy=false;register()});
   document.querySelector("#localLogin")?.addEventListener("submit",async e=>{
     e.preventDefault();
