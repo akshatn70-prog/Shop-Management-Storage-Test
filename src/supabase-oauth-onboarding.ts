@@ -188,14 +188,64 @@ async function register(){
   });
 }
 async function login(){
-  if(busy)return;busy=true;
-  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><p class="muted">Your Supabase connection is already saved on this device. Render is not used for normal login.</p><form id="localLogin"><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="registerInstead" class="ghost wide">Register / Connect Supabase</button><p class="tiny">After registration, this Login works directly against your Supabase project, even if Render is offline.</p>');
-  document.querySelector("#registerInstead")?.addEventListener("click",()=>{busy=false;register()});
-  document.querySelector("#localLogin")?.addEventListener("submit",async e=>{
+  if(busy)return;
+  busy=true;
+
+  const saved=localConnection();
+
+  // Login on a new/reinstalled device starts by asking for the shop's
+  // Supabase URL and publishable key. This flow is completely direct:
+  // it never calls the Render setup/OAuth server.
+  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Connect your shop</h2><p class="muted">Enter the Supabase project URL and publishable key for this shop. The app connects directly to Supabase using your Wi-Fi or mobile data. Render is not used.</p><form id="directConnectionForm"><label>Supabase Project URL<input name="url" type="url" autocomplete="url" placeholder="https://xxxxx.supabase.co" value="'+esc(saved.url)+'" required></label><label>Publishable Key<input name="key" type="text" autocomplete="off" placeholder="sb_publishable_..." value="'+esc(saved.key)+'" required></label><button class="primary wide">Connect</button></form><p class="tiny">After a successful connection, the URL and publishable key are saved on this device. You can download them later from Settings.</p><button id="backToGate" class="ghost wide">Back</button>');
+
+  document.querySelector("#backToGate")?.addEventListener("click",()=>{
+    busy=false;
+    renderGate();
+  });
+
+  document.querySelector<HTMLFormElement>("#directConnectionForm")?.addEventListener("submit",async e=>{
     e.preventDefault();
     const fd=new FormData(e.currentTarget as HTMLFormElement);
-    try{await finishDirectLogin(String(fd.get("email")||"").trim(),String(fd.get("password")||""))}
-    catch(e){message(e instanceof Error?e.message:String(e),"danger")}
+    const url=String(fd.get("url")||"").trim().replace(/\/$/,"");
+    const key=String(fd.get("key")||"").trim();
+    if(!url||!key)return message("Enter both the Supabase URL and publishable key.","danger");
+
+    const button=document.querySelector<HTMLButtonElement>("#directConnectionForm button");
+    if(button){button.disabled=true;button.textContent="Connecting...";}
+
+    try{
+      const client=createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+      const sessionResult=await client.auth.getSession();
+      if(sessionResult.error)throw new Error(sessionResult.error.message);
+
+      localStorage.setItem(URL_KEY,url);
+      localStorage.setItem(KEY_KEY,key);
+
+      // Move to the normal Supabase email/password login only after the
+      // project connection has been verified. No Render request is made.
+      show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><div class="notice ok">✓ Supabase project connected</div><p class="muted">Now enter the Shop Owner email and password for this shop.</p><form id="directLogin"><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="changeConnection" class="ghost wide">Change Supabase Project</button><p class="tiny">This login goes directly to your Supabase project over Wi-Fi or mobile data. Render is not used.</p></div>');
+
+      document.querySelector("#changeConnection")?.addEventListener("click",()=>login());
+
+      document.querySelector<HTMLFormElement>("#directLogin")?.addEventListener("submit",async e=>{
+        e.preventDefault();
+        const fd2=new FormData(e.currentTarget as HTMLFormElement);
+        const email=String(fd2.get("email")||"").trim();
+        const password=String(fd2.get("password")||"");
+        if(!email||!password)return message("Enter your email and password.","danger");
+        const loginButton=document.querySelector<HTMLButtonElement>("#directLogin button");
+        if(loginButton){loginButton.disabled=true;loginButton.textContent="Logging in...";}
+        try{
+          await finishDirectLogin(email,password);
+        }catch(err){
+          if(loginButton){loginButton.disabled=false;loginButton.textContent="Login";}
+          message(err instanceof Error?err.message:String(err),"danger");
+        }
+      });
+    }catch(err){
+      if(button){button.disabled=false;button.textContent="Connect";}
+      message(err instanceof Error?err.message:"Could not connect to this Supabase project. Check the URL, publishable key, and internet connection.","danger");
+    }
   });
 }
 async function start(){
