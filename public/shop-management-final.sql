@@ -4103,7 +4103,10 @@ declare
     'daily_financial_summaries',
     'lifetime_financial_summaries',
     'creditor_daily_financial_aggregates',
-    'audit_logs'
+    'audit_logs',
+    'products',
+    'debtors',
+    'creditors'
   ];
   v_existing text[] := array[]::text[];
 begin
@@ -4111,12 +4114,6 @@ begin
     raise exception 'Owner only';
   end if;
 
-  /*
-    Clear only transactional/history data. Products, shop settings, profiles,
-    and authentication accounts are intentionally preserved.
-    Some older customer databases do not have day-end tables, so every table
-    is checked before it is included in the TRUNCATE statement.
-  */
   foreach v_table in array v_tables loop
     if to_regclass('public.' || v_table) is not null then
       v_existing := array_append(v_existing, format('public.%I', v_table));
@@ -4128,19 +4125,9 @@ begin
   end if;
 
   /*
-    Keep the existing Clear All behavior: all product stock is reset to zero,
-    while the product records themselves remain available for future sales.
-  */
-  perform set_config('shop.allow_stock_change','on',true);
-  update public.products
-  set current_stock_base=0,
-      updated_at=now()
-  where id is not null;
-  perform set_config('shop.allow_stock_change','off',true);
-
-  /*
-    Keep one audit record so the owner can see that a clear operation occurred.
-    This is the only transaction-history row intentionally recreated.
+    Keep the existing app usable after Clear All:
+    owner/worker profiles, authentication accounts, shop settings and the
+    connected Supabase configuration are intentionally preserved.
   */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
@@ -4149,7 +4136,10 @@ begin
     'shop',
     jsonb_build_object(
       'cleared_at',now(),
-      'tables_cleared',coalesce(v_existing, array[]::text[])
+      'tables_cleared',coalesce(v_existing, array[]::text[]),
+      'products_deleted',true,
+      'debtors_deleted',true,
+      'creditors_deleted',true
     )
   );
 end;
@@ -4533,7 +4523,10 @@ declare
     'daily_financial_summaries',
     'lifetime_financial_summaries',
     'creditor_daily_financial_aggregates',
-    'audit_logs'
+    'audit_logs',
+    'products',
+    'debtors',
+    'creditors'
   ];
   v_existing text[] := array[]::text[];
 begin
@@ -4541,12 +4534,6 @@ begin
     raise exception 'Owner only';
   end if;
 
-  /*
-    Clear only transactional/history data. Products, shop settings, profiles,
-    and authentication accounts are intentionally preserved.
-    Some older customer databases do not have day-end tables, so every table
-    is checked before it is included in the TRUNCATE statement.
-  */
   foreach v_table in array v_tables loop
     if to_regclass('public.' || v_table) is not null then
       v_existing := array_append(v_existing, format('public.%I', v_table));
@@ -4558,19 +4545,9 @@ begin
   end if;
 
   /*
-    Keep the existing Clear All behavior: all product stock is reset to zero,
-    while the product records themselves remain available for future sales.
-  */
-  perform set_config('shop.allow_stock_change','on',true);
-  update public.products
-  set current_stock_base=0,
-      updated_at=now()
-  where id is not null;
-  perform set_config('shop.allow_stock_change','off',true);
-
-  /*
-    Keep one audit record so the owner can see that a clear operation occurred.
-    This is the only transaction-history row intentionally recreated.
+    Keep the existing app usable after Clear All:
+    owner/worker profiles, authentication accounts, shop settings and the
+    connected Supabase configuration are intentionally preserved.
   */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
@@ -4579,7 +4556,10 @@ begin
     'shop',
     jsonb_build_object(
       'cleared_at',now(),
-      'tables_cleared',coalesce(v_existing, array[]::text[])
+      'tables_cleared',coalesce(v_existing, array[]::text[]),
+      'products_deleted',true,
+      'debtors_deleted',true,
+      'creditors_deleted',true
     )
   );
 end;
@@ -4721,7 +4701,10 @@ declare
     'daily_financial_summaries',
     'lifetime_financial_summaries',
     'creditor_daily_financial_aggregates',
-    'audit_logs'
+    'audit_logs',
+    'products',
+    'debtors',
+    'creditors'
   ];
   v_existing text[] := array[]::text[];
 begin
@@ -4729,12 +4712,6 @@ begin
     raise exception 'Owner only';
   end if;
 
-  /*
-    Clear only transactional/history data. Products, shop settings, profiles,
-    and authentication accounts are intentionally preserved.
-    Some older customer databases do not have day-end tables, so every table
-    is checked before it is included in the TRUNCATE statement.
-  */
   foreach v_table in array v_tables loop
     if to_regclass('public.' || v_table) is not null then
       v_existing := array_append(v_existing, format('public.%I', v_table));
@@ -4746,19 +4723,9 @@ begin
   end if;
 
   /*
-    Keep the existing Clear All behavior: all product stock is reset to zero,
-    while the product records themselves remain available for future sales.
-  */
-  perform set_config('shop.allow_stock_change','on',true);
-  update public.products
-  set current_stock_base=0,
-      updated_at=now()
-  where id is not null;
-  perform set_config('shop.allow_stock_change','off',true);
-
-  /*
-    Keep one audit record so the owner can see that a clear operation occurred.
-    This is the only transaction-history row intentionally recreated.
+    Keep the existing app usable after Clear All:
+    owner/worker profiles, authentication accounts, shop settings and the
+    connected Supabase configuration are intentionally preserved.
   */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
@@ -4767,7 +4734,10 @@ begin
     'shop',
     jsonb_build_object(
       'cleared_at',now(),
-      'tables_cleared',coalesce(v_existing, array[]::text[])
+      'tables_cleared',coalesce(v_existing, array[]::text[]),
+      'products_deleted',true,
+      'debtors_deleted',true,
+      'creditors_deleted',true
     )
   );
 end;
@@ -5124,7 +5094,10 @@ declare
     'daily_financial_summaries',
     'lifetime_financial_summaries',
     'creditor_daily_financial_aggregates',
-    'audit_logs'
+    'audit_logs',
+    'products',
+    'debtors',
+    'creditors'
   ];
   v_existing text[] := array[]::text[];
 begin
@@ -5132,12 +5105,6 @@ begin
     raise exception 'Owner only';
   end if;
 
-  /*
-    Clear only transactional/history data. Products, shop settings, profiles,
-    and authentication accounts are intentionally preserved.
-    Some older customer databases do not have day-end tables, so every table
-    is checked before it is included in the TRUNCATE statement.
-  */
   foreach v_table in array v_tables loop
     if to_regclass('public.' || v_table) is not null then
       v_existing := array_append(v_existing, format('public.%I', v_table));
@@ -5149,19 +5116,9 @@ begin
   end if;
 
   /*
-    Keep the existing Clear All behavior: all product stock is reset to zero,
-    while the product records themselves remain available for future sales.
-  */
-  perform set_config('shop.allow_stock_change','on',true);
-  update public.products
-  set current_stock_base=0,
-      updated_at=now()
-  where id is not null;
-  perform set_config('shop.allow_stock_change','off',true);
-
-  /*
-    Keep one audit record so the owner can see that a clear operation occurred.
-    This is the only transaction-history row intentionally recreated.
+    Keep the existing app usable after Clear All:
+    owner/worker profiles, authentication accounts, shop settings and the
+    connected Supabase configuration are intentionally preserved.
   */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
@@ -5170,7 +5127,10 @@ begin
     'shop',
     jsonb_build_object(
       'cleared_at',now(),
-      'tables_cleared',coalesce(v_existing, array[]::text[])
+      'tables_cleared',coalesce(v_existing, array[]::text[]),
+      'products_deleted',true,
+      'debtors_deleted',true,
+      'creditors_deleted',true
     )
   );
 end;
