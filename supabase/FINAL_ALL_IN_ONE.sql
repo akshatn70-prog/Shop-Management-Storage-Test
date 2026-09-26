@@ -3992,9 +3992,9 @@ begin
     coalesce(s.upi,0)-coalesce(r.sales_upi,0),
     coalesce(s.credit,0)-coalesce(r.sales_credit,0),
     round(coalesce(s.profit,0)+coalesce(r.sales_profit_impact,0),2),
-    coalesce(s.cash_profit,0),
-    coalesce(s.upi_profit,0),
-    coalesce(s.credit_profit,0),
+    coalesce(s.cash_profit,0)+coalesce(r.sales_cash_profit_impact,0),
+    coalesce(s.upi_profit,0)+coalesce(r.sales_upi_profit_impact,0),
+    coalesce(s.credit_profit,0)+coalesce(r.sales_credit_profit_impact,0),
     coalesce(s.credit,0)-coalesce(r.sales_credit,0),
     coalesce(p.cash_purchase,0)-coalesce(r.purchase_cash,0),
     coalesce(p.upi_purchase,0)-coalesce(r.purchase_upi,0),
@@ -4017,9 +4017,9 @@ begin
     where w.shop_id=p_shop_id and not s.voided and public.business_date(s.sold_at)=p_business_date
   ) s on true
   left join lateral (
-    select coalesce(sum(case when i.payment_mode='cash' then i.total_cost else 0 end),0)::numeric cash_purchase,
-      coalesce(sum(case when i.payment_mode='upi' then i.total_cost else 0 end),0)::numeric upi_purchase,
-      coalesce(sum(case when i.payment_mode='credit' then i.total_cost else 0 end),0)::numeric credit_purchase,
+    select coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.cash_amount else 0 end),0)::numeric cash_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.upi_amount else 0 end),0)::numeric upi_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.credit_amount else 0 end),0)::numeric credit_purchase,
       coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric total_purchase,
       coalesce(sum(case when coalesce(i.pre_stock,false) then i.total_cost else 0 end),0)::numeric pre_stock_purchase
     from public.inventory_purchases i join public.profiles w on w.id=i.purchased_by
@@ -4038,6 +4038,9 @@ begin
       coalesce(sum(case when return_type='sale' then upi_amount else 0 end),0)::numeric sales_upi,
       coalesce(sum(case when return_type='sale' then credit_amount else 0 end),0)::numeric sales_credit,
       coalesce(sum(case when return_type='sale' then profit_impact else 0 end),0)::numeric sales_profit_impact,
+      coalesce(sum(case when return_type='sale' and cash_amount>0 then profit_impact else 0 end),0)::numeric sales_cash_profit_impact,
+      coalesce(sum(case when return_type='sale' and upi_amount>0 then profit_impact else 0 end),0)::numeric sales_upi_profit_impact,
+      coalesce(sum(case when return_type='sale' and credit_amount>0 then profit_impact else 0 end),0)::numeric sales_credit_profit_impact,
       coalesce(sum(case when return_type='purchase' then total_amount else 0 end),0)::numeric purchase_ret,
       coalesce(sum(case when return_type='purchase' then cash_amount else 0 end),0)::numeric purchase_cash,
       coalesce(sum(case when return_type='purchase' then upi_amount else 0 end),0)::numeric purchase_upi,
@@ -4095,3 +4098,40 @@ begin
  perform public.refresh_lifetime_financial_summary(v_shop); return coalesce(new,old);
 end; $$;
 
+
+-- Rebuild permanent aggregates using the configured business-day reset after
+-- all patched functions/triggers are installed.
+do $$
+declare r record;
+begin
+  for r in
+    select distinct w.shop_id, public.business_date(s.sold_at) business_date
+    from public.sales s join public.profiles w on w.id=s.worker_id
+    where w.shop_id is not null
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct w.shop_id, public.business_date(p.purchased_at) business_date
+    from public.inventory_purchases p join public.profiles w on w.id=p.purchased_by
+    where w.shop_id is not null
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct d.shop_id, public.business_date(d.created_at) business_date
+    from public.debtor_ledger d
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct r.shop_id, public.business_date(r.returned_at) business_date
+    from public.returns r
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in select distinct shop_id from public.daily_financial_summaries
+  loop
+    perform public.refresh_lifetime_financial_summary(r.shop_id);
+  end loop;
+end $$;
