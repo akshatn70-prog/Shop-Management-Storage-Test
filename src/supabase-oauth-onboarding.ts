@@ -42,6 +42,17 @@ async function register(){
     const fd=new FormData(e.currentTarget as HTMLFormElement),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
     if(!name||!email||password.length<6)return message("Enter your name, email and a password of at least 6 characters.","danger");
     try{
+      await new Promise<void>((resolve,reject)=>{
+        show('<div class="brand big">SHOP MANAGEMENT</div><h2>Connect Supabase</h2><p class="muted">Choose the Supabase account that should own this shop.</p><div class="notice">Your Supabase email and password are entered only on Supabase. Shop Management never receives or stores your Supabase password.</div><button id="supabaseLogin" class="primary wide">I Already Have a Supabase Account</button><button id="supabaseSignup" class="ghost wide">Create a New Supabase Account</button><button id="supabaseContinue" class="ghost wide" style="display:none">I Created My Account — Continue</button><p id="supabaseHelp" class="tiny">If you do not have a Supabase account, create one first. After signing in or creating your account, continue and authorize Shop Management.</p>');
+        document.querySelector("#supabaseLogin")?.addEventListener("click",()=>resolve());
+        document.querySelector("#supabaseSignup")?.addEventListener("click",()=>{
+          window.open("https://supabase.com/dashboard/sign-up","_blank","noopener,noreferrer");
+          const b=document.querySelector("#supabaseContinue") as HTMLElement|null;
+          if(b)b.style.display="block";
+          const h=document.querySelector("#supabaseHelp");if(h)h.textContent="Finish creating or signing into your Supabase account in the new tab, then return here and tap “I Created My Account — Continue”.";
+        });
+        document.querySelector("#supabaseContinue")?.addEventListener("click",()=>resolve());
+      });
       message("Starting secure Supabase authorization...");
       const start=await api("/api/oauth/start",{method:"POST",body:"{}"});
       message("Supabase opened. Sign in with the Supabase account that should own this shop, then press Allow. Your Supabase password stays on Supabase.");
