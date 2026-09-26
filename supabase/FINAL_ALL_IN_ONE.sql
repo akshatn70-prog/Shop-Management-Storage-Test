@@ -4029,13 +4029,13 @@ create or replace function public.add_inventory_purchase(
   p_supplier_name text default null
 ) returns uuid
 language sql security definer set search_path=''
-as $
+as $compat$
   select public.add_inventory_purchase(
     p_product_id,p_quantity_base,p_quantity_display,p_purchase_unit,p_purchase_price,
     p_payment_mode,p_cash_amount,p_upi_amount,p_credit_amount,p_debtor_id,
     p_pre_stock,p_supplier_name,null
   );
-$;
+$compat$;
 
 revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
 grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) to authenticated;
