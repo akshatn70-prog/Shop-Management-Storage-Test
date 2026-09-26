@@ -32,12 +32,12 @@ async function handleEmailConfirmationRedirect(){
     const sessionResult=await client.auth.getSession();
     if(sessionResult.data.session?.user){
       localStorage.setItem(CONFIRM_FLAG,String(Date.now()));
+      history.replaceState({},document.title,window.location.pathname+window.location.search);
+      return true;
     }
   }catch{}
 
-  // Remove auth tokens/errors from the visible URL.
-  history.replaceState({},document.title,window.location.pathname+window.location.search);
-  return true;
+  return false;
 }
 function show(html:string){
   const app=document.querySelector("#app");if(app)app.innerHTML='<div class="login"><div class="login-card">'+html+"</div></div>";
@@ -199,7 +199,11 @@ async function login(){
   });
 }
 async function start(){
-  await handleEmailConfirmationRedirect();
+  const confirmedRedirect=await handleEmailConfirmationRedirect();
+  if(confirmedRedirect){
+    location.replace(window.location.pathname+window.location.search);
+    return;
+  }
   renderGate();
 }
 
