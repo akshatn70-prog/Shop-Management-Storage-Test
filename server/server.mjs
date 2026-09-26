@@ -71,6 +71,20 @@ async function exchange(code,verifier){
   if(!r.ok)throw new Error(data?.error_description||data?.error||"Supabase OAuth token exchange failed");
   return data;
 }
+async function getSecretKey(ref,token){
+  let keys=await supa("/v1/projects/"+encodeURIComponent(ref)+"/api-keys?reveal=true",token);
+  if(!Array.isArray(keys))keys=keys?.keys||[];
+  let key=keys.find(x=>(x.type==="secret"||x.type==="service_role") && x.api_key)?.api_key||"";
+  if(!key){
+    const created=await supa("/v1/projects/"+encodeURIComponent(ref)+"/api-keys?reveal=true",token,{
+      method:"POST",
+      body:JSON.stringify({type:"secret",name:"shop-management-admin"})
+    });
+    key=created?.api_key||"";
+  }
+  if(!key)throw new Error("No secret API key is available for this Supabase project.");
+  return key;
+}
 async function getPublishableKey(ref,token){
   let keys=await supa("/v1/projects/"+encodeURIComponent(ref)+"/api-keys?reveal=true",token);
   if(!Array.isArray(keys))keys=keys?.keys||[];
@@ -164,8 +178,39 @@ const server=http.createServer(async(req,res)=>{
       }
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
-      sessions.delete(String(b.session_id||""));
       return json(res,200,{ok:true,url,key,project:{ref:project.ref,name:project.name}});
+    }
+    if(u.pathname==="/api/oauth/confirm-user" && req.method==="POST"){
+      const b=await body(req),s=sessions.get(String(b.session_id||"")),ref=String(b.project_ref||""),email=String(b.email||"").trim().toLowerCase();
+      if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready."});
+      if(!ref||!email)return json(res,400,{error:"Project and email are required."});
+      const project=(s.projects||[]).find(p=>p.ref===ref);
+      if(!project)return json(res,400,{error:"Selected Supabase project was not found in your account."});
+      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))return json(res,400,{error:"Enter a valid email address."});
+      try{
+        const secret=await getSecretKey(ref,s.tokens.access_token);
+        const r=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users?per_page=1000",{
+          headers:{apikey:secret,Authorization:"Bearer "+secret,Accept:"application/json"}
+        });
+        const list=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error((list?.msg||list?.message||"Supabase Auth admin request failed")+" (HTTP "+r.status+")");
+        const users=Array.isArray(list)?list:(list?.users||[]);
+        const user=users.find(x=>String(x?.email||"").toLowerCase()===email);
+        if(!user)return json(res,404,{error:"The owner account was not found in the new Supabase project."});
+        if(!user.email_confirmed_at){
+          const ur=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users/"+encodeURIComponent(user.id),{
+            method:"PUT",
+            headers:{apikey:secret,Authorization:"Bearer "+secret,"Content-Type":"application/json",Accept:"application/json"},
+            body:JSON.stringify({email_confirm:true})
+          });
+          const ud=await ur.json().catch(()=>({}));
+          if(!ur.ok)throw new Error((ud?.msg||ud?.message||"Supabase could not confirm the owner email")+" (HTTP "+ur.status+")");
+        }
+        sessions.delete(String(b.session_id||""));
+        return json(res,200,{ok:true,confirmed:true});
+      }catch(e){
+        return json(res,500,{error:"The owner account was created, but automatic email confirmation failed.",detail:e instanceof Error?e.message:String(e)});
+      }
     }
     if(u.pathname.startsWith("/api/"))return json(res,404,{error:"Not found"});
 
