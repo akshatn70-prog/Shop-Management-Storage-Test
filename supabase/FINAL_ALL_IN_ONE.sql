@@ -4405,3 +4405,5 @@ $clear_all_v2$;
 revoke all on function public.clear_all_shop_data_v2() from public,anon;
 grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
+
+select pg_notify('pgrst','reload schema');
