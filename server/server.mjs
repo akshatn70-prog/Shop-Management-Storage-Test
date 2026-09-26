@@ -85,7 +85,7 @@ async function getPublishableKey(ref,token){
   if(!key)throw new Error("No publishable API key is available for this Supabase project.");
   return key;
 }
-function cleanup(){
+async function createProject(token,{organization_id,name,region}){  const dbPass=random(24)+"A1!";  return await supa("/v1/projects",token,{method:"POST",body:JSON.stringify({organization_id,name,region,db_pass:dbPass})});}async function waitProject(ref,token){  for(let i=0;i<60;i++){    const p=await supa("/v1/projects/"+encodeURIComponent(ref),token);    if(String(p?.status||"").toUpperCase()==="ACTIVE" || String(p?.status||"").toUpperCase()==="HEALTHY")return p;    await new Promise(r=>setTimeout(r,5000));  }  throw new Error("Supabase project is still starting. Please wait a few minutes and try again.");}function cleanup(){
   const now=Date.now();
   for(const [id,s] of sessions)if(now-s.createdAt>15*60*1000)sessions.delete(id);
 }
@@ -124,7 +124,7 @@ const server=http.createServer(async(req,res)=>{
       try{
         session.tokens=await exchange(code,session.verifier);
         session.status="ready";
-        session.projects=await supa("/v1/projects",session.tokens.access_token);
+        session.projects=await supa("/v1/projects",session.tokens.access_token);        session.organizations=await supa("/v1/organizations",session.tokens.access_token);
         return html(res,200,"<!doctype html><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{font-family:system-ui;padding:32px;background:#0f172a;color:#fff}main{max-width:520px;margin:auto;background:#111c32;padding:28px;border-radius:20px}b{color:#7dd3fc}</style><main><h2>Supabase connected ✓</h2><p>You can now return to the <b>Shop Management</b> app.</p><p>Keep this page open until the app finishes setup.</p></main>");
       }catch(e){session.status="error";session.error=e instanceof Error?e.message:String(e);return html(res,500,"<h2>Supabase connection failed</h2><p>Return to the app and try again.</p>")}
     }
@@ -132,9 +132,9 @@ const server=http.createServer(async(req,res)=>{
       const s=sessions.get(u.searchParams.get("session")||"");
       if(!s)return json(res,404,{error:"Registration session expired."});
       if(s.status==="error")return json(res,400,{error:s.error||"Authorization failed."});
-      return json(res,200,{status:s.status,projects:s.status==="ready"?(s.projects||[]).map(p=>({ref:p.ref,name:p.name,region:p.region,status:p.status})):[]});
+      return json(res,200,{status:s.status,organizations:s.status==="ready"?(s.organizations||[]).map(o=>({id:o.id,name:o.name,slug:o.slug})):[],projects:s.status==="ready"?(s.projects||[]).map(p=>({ref:p.ref,name:p.name,region:p.region,status:p.status})):[]});
     }
-    if(u.pathname==="/api/oauth/install" && req.method==="POST"){
+    if(u.pathname==="/api/oauth/create-project" && req.method==="POST"){      const b=await body(req),s=sessions.get(String(b.session_id||""));      if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready."});      const organization_id=String(b.organization_id||"");      const name=String(b.name||"Shop Management").trim().slice(0,60);      const region=String(b.region||"ap-southeast-1");      if(!organization_id)return json(res,400,{error:"Select a Supabase organization."});      if(!name)return json(res,400,{error:"Enter a project name."});      try{        const project=await createProject(s.tokens.access_token,{organization_id,name,region});        const ready=await waitProject(project.ref,s.tokens.access_token);        s.projects=[...(s.projects||[]),ready];        return json(res,200,{ok:true,project:{ref:ready.ref,name:ready.name,region:ready.region,status:ready.status}});      }catch(e){return json(res,500,{error:e instanceof Error?e.message:String(e)});}    }    if(u.pathname==="/api/oauth/install" && req.method==="POST"){
       const b=await body(req),s=sessions.get(String(b.session_id||"")),ref=String(b.project_ref||"");
       if(!s||s.status!=="ready"||!s.tokens?.access_token)return json(res,400,{error:"Registration session is not ready."});
       const project=(s.projects||[]).find(p=>p.ref===ref);
