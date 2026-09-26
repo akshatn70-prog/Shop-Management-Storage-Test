@@ -58,14 +58,30 @@ async function register(){
       }
       if(!ready)throw new Error("Supabase authorization timed out. Start registration again.");
       const projects=ready.projects||[];
-      if(!projects.length)throw new Error("Your Supabase account has no project yet. Create a Supabase project first, then register again.");
+      const organizations=ready.organizations||[];
       let ref=projects.length===1?projects[0].ref:"";
       if(!ref){
-        show('<div class="brand big">SHOP MANAGEMENT</div><h2>Choose your Supabase project</h2><p class="muted">Select the project that will store this shop.</p><select id="projectPick" class="wide">'+projects.map((p:any)=>'<option value="'+esc(p.ref)+'">'+esc(p.name)+" — "+esc(p.region||"")+'</option>').join("")+'</select><button id="installSelected" class="primary wide">Install Shop Management</button>');
+        show('<div class="brand big">SHOP MANAGEMENT</div><h2>Choose your Supabase project</h2><p class="muted">Use an existing project or create a new one automatically.</p><div class="notice">Your existing projects are listed below.</div><select id="projectPick" class="wide"><option value="">Select existing project...</option>'+projects.map((p:any)=>'<option value="'+esc(p.ref)+'">'+esc(p.name)+" — "+esc(p.region||"")+'</option>').join("")+'</select><button id="installSelected" class="primary wide">Use Existing Project</button><div style="text-align:center;margin:14px 0;color:#64748b">OR</div><button id="newProject" class="ghost wide">Create New Supabase Project</button>');
         await new Promise<void>((resolve,reject)=>{
-          document.querySelector("#installSelected")?.addEventListener("click",async()=>{
-            ref=String((document.querySelector("#projectPick") as HTMLSelectElement).value||"");
-            try{resolve()}catch(e){reject(e)}
+          document.querySelector("#installSelected")?.addEventListener("click",()=>{
+            const v=String((document.querySelector("#projectPick") as HTMLSelectElement).value||"");
+            if(!v){message("Select an existing project, or choose Create New Supabase Project.","danger");return}
+            ref=v;resolve();
+          });
+          document.querySelector("#newProject")?.addEventListener("click",()=>{
+            const regions=["ap-southeast-1","ap-northeast-1","ap-south-1","us-east-1","us-west-1","eu-west-1"];
+            show('<div class="brand big">SHOP MANAGEMENT</div><h2>Create Supabase project</h2><p class="muted">A new project will be created in your Supabase account and then Shop Management will install its database automatically.</p><label>Organization<select id="orgPick" class="wide">'+organizations.map((o:any)=>'<option value="'+esc(o.id)+'">'+esc(o.name)+'</option>').join("")+'</select></label><label>Project name<input id="newProjectName" class="wide" value="Shop Management"></label><label>Region<select id="regionPick" class="wide">'+regions.map(r=>'<option value="'+r+'"'+(r==="ap-southeast-1"?" selected":"")+'>'+r+'</option>').join("")+'</select></label><button id="createProject" class="primary wide">Create Project & Continue</button>');
+            document.querySelector("#createProject")?.addEventListener("click",async()=>{
+              const organization_id=String((document.querySelector("#orgPick") as HTMLSelectElement)?.value||"");
+              const name=String((document.querySelector("#newProjectName") as HTMLInputElement)?.value||"").trim();
+              const region=String((document.querySelector("#regionPick") as HTMLSelectElement)?.value||"ap-southeast-1");
+              if(!organization_id||!name){message("Select an organization and enter a project name.","danger");return}
+              try{
+                message("Creating your Supabase project. This can take a few minutes...");
+                const created=await api("/api/oauth/create-project",{method:"POST",body:JSON.stringify({session_id:start.session_id,organization_id,name,region})});
+                ref=created.project.ref;resolve();
+              }catch(e){message(e instanceof Error?e.message:String(e),"danger")}
+            });
           });
         });
       }
