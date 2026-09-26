@@ -471,7 +471,7 @@ function bindCart(){
  const cash=pay.elements.namedItem("cash") as HTMLInputElement;
  const upi=pay.elements.namedItem("upi") as HTMLInputElement;
  const credit=pay.elements.namedItem("credit") as HTMLInputElement;
- const total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
+ let total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
  const toggle=()=>{
   const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";
   document.querySelector("#cartCashBox")?.classList.toggle("hidden",!split);
@@ -507,7 +507,7 @@ function bindCart(){
    }
   }
   cartItems=merged;
-  const normalizedTotal=cartItems.reduce((a,x)=>a+(Number(x.quantity_base)||0)*(Number(x.selling_price_per_base_unit)||0),0);
+  total=cartItems.reduce((a,x)=>a+(Number(x.quantity_base)||0)*(Number(x.selling_price_per_base_unit)||0),0);
   if(!cartItems.length)return notify("Add items first.","error");
   let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;
   if(mode.value==="cash"){c=total;u=0;cr=0}
