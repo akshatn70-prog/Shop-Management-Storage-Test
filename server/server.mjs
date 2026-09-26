@@ -207,12 +207,21 @@ const server=http.createServer(async(req,res)=>{
       const token=s.tokens.access_token;
       await supa("/v1/projects/"+encodeURIComponent(ref)+"/database/query",token,{method:"POST",body:JSON.stringify({query:sql,read_only:false})});
       try{
-        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true})});
+        // Keep Supabase's normal confirmation-email flow. Free-tier projects using
+        // Supabase's default email provider cannot change the email template.
+        // The important part is that Site URL / redirect allow-list point to the
+        // real production website instead of Supabase's default localhost URL.
+        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({
+          site_url:"https://shop-management-storage-test.onrender.com",
+          uri_allow_list:"https://shop-management-storage-test.onrender.com",
+          disable_signup:false,
+          external_email_enabled:true,
+          mailer_autoconfirm:false
+        })});
       }catch(e){
         const detail=e instanceof Error?e.message:String(e);
         return json(res,500,{error:"Database installed, but Supabase Auth configuration failed.",detail});
       }
-      await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({site_url:"https://shop-management-storage-test.onrender.com",uri_allow_list:"https://shop-management-storage-test.onrender.com",disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true,mailer_templates_confirmation_content:"<h2>Confirm your email</h2><p><a href=\"{{ .ConfirmationURL }}\">Confirm email address</a></p>"})});
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
       const setup_ticket=makeSetupTicket({ref,access_token:token,created_at:Date.now()});
