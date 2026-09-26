@@ -4086,38 +4086,71 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $$clear_all_v2$
+as $clear_all_v2$
+declare
+  v_table text;
+  v_tables text[] := array[
+    'debtor_ledger',
+    'credit_ledger',
+    'returns',
+    'sale_transactions',
+    'sales',
+    'inventory_purchases',
+    'daily_closings',
+    'day_end_summary_lines',
+    'day_end_summaries',
+    'automatic_day_end_snapshots',
+    'daily_financial_summaries',
+    'lifetime_financial_summaries',
+    'creditor_daily_financial_aggregates',
+    'audit_logs'
+  ];
+  v_existing text[] := array[]::text[];
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
   end if;
 
-  delete from public.debtor_ledger where true;
-  delete from public.credit_ledger where true;
-  delete from public.sale_transactions where true;
-  delete from public.sales where true;
-  delete from public.inventory_purchases where true;
-  delete from public.daily_closings where true;
-  delete from public.day_end_summary_lines where true;
-  delete from public.day_end_summaries where true;
-  delete from public.automatic_day_end_snapshots where true;
-  delete from public.daily_financial_summaries where true;
-  delete from public.lifetime_financial_summaries where true;
-  delete from public.creditor_daily_financial_aggregates where true;
-  delete from public.audit_logs where true;
+  /*
+    Clear only transactional/history data. Products, shop settings, profiles,
+    and authentication accounts are intentionally preserved.
+    Some older customer databases do not have day-end tables, so every table
+    is checked before it is included in the TRUNCATE statement.
+  */
+  foreach v_table in array v_tables loop
+    if to_regclass('public.' || v_table) is not null then
+      v_existing := array_append(v_existing, format('public.%I', v_table));
+    end if;
+  end loop;
 
+  if coalesce(array_length(v_existing, 1), 0) > 0 then
+    execute 'truncate table ' || array_to_string(v_existing, ', ') || ' restart identity';
+  end if;
+
+  /*
+    Keep the existing Clear All behavior: all product stock is reset to zero,
+    while the product records themselves remain available for future sales.
+  */
   perform set_config('shop.allow_stock_change','on',true);
   update public.products
-  set current_stock_base=0, updated_at=now()
+  set current_stock_base=0,
+      updated_at=now()
   where id is not null;
   perform set_config('shop.allow_stock_change','off',true);
 
+  /*
+    Keep one audit record so the owner can see that a clear operation occurred.
+    This is the only transaction-history row intentionally recreated.
+  */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     auth.uid(),
     'shop_data_cleared',
     'shop',
-    jsonb_build_object('cleared_at',now())
+    jsonb_build_object(
+      'cleared_at',now(),
+      'tables_cleared',coalesce(v_existing, array[]::text[])
+    )
   );
 end;
 $clear_all_v2$;
@@ -4484,37 +4517,70 @@ language plpgsql
 security definer
 set search_path=''
 as $clear_all_v2$
+declare
+  v_table text;
+  v_tables text[] := array[
+    'debtor_ledger',
+    'credit_ledger',
+    'returns',
+    'sale_transactions',
+    'sales',
+    'inventory_purchases',
+    'daily_closings',
+    'day_end_summary_lines',
+    'day_end_summaries',
+    'automatic_day_end_snapshots',
+    'daily_financial_summaries',
+    'lifetime_financial_summaries',
+    'creditor_daily_financial_aggregates',
+    'audit_logs'
+  ];
+  v_existing text[] := array[]::text[];
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
   end if;
 
-  delete from public.debtor_ledger where true;
-  delete from public.credit_ledger where true;
-  delete from public.sale_transactions where true;
-  delete from public.sales where true;
-  delete from public.inventory_purchases where true;
-  delete from public.daily_closings where true;
-  delete from public.day_end_summary_lines where true;
-  delete from public.day_end_summaries where true;
-  delete from public.automatic_day_end_snapshots where true;
-  delete from public.daily_financial_summaries where true;
-  delete from public.lifetime_financial_summaries where true;
-  delete from public.creditor_daily_financial_aggregates where true;
-  delete from public.audit_logs where true;
+  /*
+    Clear only transactional/history data. Products, shop settings, profiles,
+    and authentication accounts are intentionally preserved.
+    Some older customer databases do not have day-end tables, so every table
+    is checked before it is included in the TRUNCATE statement.
+  */
+  foreach v_table in array v_tables loop
+    if to_regclass('public.' || v_table) is not null then
+      v_existing := array_append(v_existing, format('public.%I', v_table));
+    end if;
+  end loop;
 
+  if coalesce(array_length(v_existing, 1), 0) > 0 then
+    execute 'truncate table ' || array_to_string(v_existing, ', ') || ' restart identity';
+  end if;
+
+  /*
+    Keep the existing Clear All behavior: all product stock is reset to zero,
+    while the product records themselves remain available for future sales.
+  */
   perform set_config('shop.allow_stock_change','on',true);
   update public.products
-  set current_stock_base=0, updated_at=now()
+  set current_stock_base=0,
+      updated_at=now()
   where id is not null;
   perform set_config('shop.allow_stock_change','off',true);
 
+  /*
+    Keep one audit record so the owner can see that a clear operation occurred.
+    This is the only transaction-history row intentionally recreated.
+  */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     auth.uid(),
     'shop_data_cleared',
     'shop',
-    jsonb_build_object('cleared_at',now())
+    jsonb_build_object(
+      'cleared_at',now(),
+      'tables_cleared',coalesce(v_existing, array[]::text[])
+    )
   );
 end;
 $clear_all_v2$;
@@ -4639,37 +4705,70 @@ language plpgsql
 security definer
 set search_path=''
 as $clear_all_v2$
+declare
+  v_table text;
+  v_tables text[] := array[
+    'debtor_ledger',
+    'credit_ledger',
+    'returns',
+    'sale_transactions',
+    'sales',
+    'inventory_purchases',
+    'daily_closings',
+    'day_end_summary_lines',
+    'day_end_summaries',
+    'automatic_day_end_snapshots',
+    'daily_financial_summaries',
+    'lifetime_financial_summaries',
+    'creditor_daily_financial_aggregates',
+    'audit_logs'
+  ];
+  v_existing text[] := array[]::text[];
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
   end if;
 
-  delete from public.debtor_ledger where true;
-  delete from public.credit_ledger where true;
-  delete from public.sale_transactions where true;
-  delete from public.sales where true;
-  delete from public.inventory_purchases where true;
-  delete from public.daily_closings where true;
-  delete from public.day_end_summary_lines where true;
-  delete from public.day_end_summaries where true;
-  delete from public.automatic_day_end_snapshots where true;
-  delete from public.daily_financial_summaries where true;
-  delete from public.lifetime_financial_summaries where true;
-  delete from public.creditor_daily_financial_aggregates where true;
-  delete from public.audit_logs where true;
+  /*
+    Clear only transactional/history data. Products, shop settings, profiles,
+    and authentication accounts are intentionally preserved.
+    Some older customer databases do not have day-end tables, so every table
+    is checked before it is included in the TRUNCATE statement.
+  */
+  foreach v_table in array v_tables loop
+    if to_regclass('public.' || v_table) is not null then
+      v_existing := array_append(v_existing, format('public.%I', v_table));
+    end if;
+  end loop;
 
+  if coalesce(array_length(v_existing, 1), 0) > 0 then
+    execute 'truncate table ' || array_to_string(v_existing, ', ') || ' restart identity';
+  end if;
+
+  /*
+    Keep the existing Clear All behavior: all product stock is reset to zero,
+    while the product records themselves remain available for future sales.
+  */
   perform set_config('shop.allow_stock_change','on',true);
   update public.products
-  set current_stock_base=0, updated_at=now()
+  set current_stock_base=0,
+      updated_at=now()
   where id is not null;
   perform set_config('shop.allow_stock_change','off',true);
 
+  /*
+    Keep one audit record so the owner can see that a clear operation occurred.
+    This is the only transaction-history row intentionally recreated.
+  */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     auth.uid(),
     'shop_data_cleared',
     'shop',
-    jsonb_build_object('cleared_at',now())
+    jsonb_build_object(
+      'cleared_at',now(),
+      'tables_cleared',coalesce(v_existing, array[]::text[])
+    )
   );
 end;
 $clear_all_v2$;
@@ -5009,37 +5108,70 @@ language plpgsql
 security definer
 set search_path=''
 as $clear_all_v2$
+declare
+  v_table text;
+  v_tables text[] := array[
+    'debtor_ledger',
+    'credit_ledger',
+    'returns',
+    'sale_transactions',
+    'sales',
+    'inventory_purchases',
+    'daily_closings',
+    'day_end_summary_lines',
+    'day_end_summaries',
+    'automatic_day_end_snapshots',
+    'daily_financial_summaries',
+    'lifetime_financial_summaries',
+    'creditor_daily_financial_aggregates',
+    'audit_logs'
+  ];
+  v_existing text[] := array[]::text[];
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
   end if;
 
-  delete from public.debtor_ledger where true;
-  delete from public.credit_ledger where true;
-  delete from public.sale_transactions where true;
-  delete from public.sales where true;
-  delete from public.inventory_purchases where true;
-  delete from public.daily_closings where true;
-  delete from public.day_end_summary_lines where true;
-  delete from public.day_end_summaries where true;
-  delete from public.automatic_day_end_snapshots where true;
-  delete from public.daily_financial_summaries where true;
-  delete from public.lifetime_financial_summaries where true;
-  delete from public.creditor_daily_financial_aggregates where true;
-  delete from public.audit_logs where true;
+  /*
+    Clear only transactional/history data. Products, shop settings, profiles,
+    and authentication accounts are intentionally preserved.
+    Some older customer databases do not have day-end tables, so every table
+    is checked before it is included in the TRUNCATE statement.
+  */
+  foreach v_table in array v_tables loop
+    if to_regclass('public.' || v_table) is not null then
+      v_existing := array_append(v_existing, format('public.%I', v_table));
+    end if;
+  end loop;
 
+  if coalesce(array_length(v_existing, 1), 0) > 0 then
+    execute 'truncate table ' || array_to_string(v_existing, ', ') || ' restart identity';
+  end if;
+
+  /*
+    Keep the existing Clear All behavior: all product stock is reset to zero,
+    while the product records themselves remain available for future sales.
+  */
   perform set_config('shop.allow_stock_change','on',true);
   update public.products
-  set current_stock_base=0, updated_at=now()
+  set current_stock_base=0,
+      updated_at=now()
   where id is not null;
   perform set_config('shop.allow_stock_change','off',true);
 
+  /*
+    Keep one audit record so the owner can see that a clear operation occurred.
+    This is the only transaction-history row intentionally recreated.
+  */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     auth.uid(),
     'shop_data_cleared',
     'shop',
-    jsonb_build_object('cleared_at',now())
+    jsonb_build_object(
+      'cleared_at',now(),
+      'tables_cleared',coalesce(v_existing, array[]::text[])
+    )
   );
 end;
 $clear_all_v2$;
