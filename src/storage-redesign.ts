@@ -651,7 +651,7 @@ function login(msg=""){
 
   document.querySelector<HTMLFormElement>("#createAccount")?.addEventListener("submit",async e=>{
    e.preventDefault();
-   const f=e.currentTarget,fd=new FormData(f),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+   const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
    if(!email||!password)return notify("Enter your email and password.","error");
    const r=await supabase!.auth.signUp({email,password,options:{data:{full_name:name}}});
    if(r.error)return renderAuthError(r.error.message);
