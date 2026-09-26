@@ -1267,9 +1267,8 @@ grant execute on function public.initialize_shop(text) to anon, authenticated;
 -- New accounts:
 -- first account in this project = owner
 -- later accounts = workers
--- all accounts start inactive
--- owner becomes active after email verification
--- workers require owner approval
+-- accounts are active immediately for the personal/direct-login app flow
+-- no owner approval is required
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -1313,7 +1312,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
     coalesce(new.email, ''),
     v_role,
-    false,
+    true,
     v_shop_id
   )
   on conflict (id) do update
