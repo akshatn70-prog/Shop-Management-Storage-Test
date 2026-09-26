@@ -442,7 +442,30 @@ begin
     from public.returns
     where shop_id=p_shop_id
       and (returned_at at time zone v_tz)::date=p_business_date
-  ) r on true;
+  ) r on true
+  on conflict(shop_id,business_date) do update set
+    total_transactions=excluded.total_transactions,
+    total_revenue=excluded.total_revenue,
+    cash_sales=excluded.cash_sales,
+    upi_sales=excluded.upi_sales,
+    credit_sales=excluded.credit_sales,
+    total_profit=excluded.total_profit,
+    cash_profit=excluded.cash_profit,
+    upi_profit=excluded.upi_profit,
+    credit_profit=excluded.credit_profit,
+    creditor_amount=excluded.creditor_amount,
+    purchase_cash=excluded.purchase_cash,
+    purchase_upi=excluded.purchase_upi,
+    purchase_credit=excluded.purchase_credit,
+    total_purchases=excluded.total_purchases,
+    pre_stock_purchases=excluded.pre_stock_purchases,
+    sales_returns=excluded.sales_returns,
+    purchase_returns=excluded.purchase_returns,
+    sales_return_profit_impact=excluded.sales_return_profit_impact,
+    debtor_payment_cash=excluded.debtor_payment_cash,
+    debtor_payment_upi=excluded.debtor_payment_upi,
+    debtor_payment_total=excluded.debtor_payment_total,
+    updated_at=now();
 
   perform public.refresh_lifetime_financial_summary(p_shop_id);
 end;
