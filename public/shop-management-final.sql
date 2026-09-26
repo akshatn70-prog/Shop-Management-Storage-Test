@@ -44,6 +44,22 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+
+-- TEST REPAIR: debtor tables were referenced by the purchase/returns SQL but were missing.
+create table if not exists public.debtors (
+  id uuid primary key default gen_random_uuid(),
+  shop_id text not null,
+  name text not null,
+  mobile text,
+  address text,
+  notes text not null default '',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists debtors_shop_idx on public.debtors(shop_id);
+create index if not exists debtors_active_idx on public.debtors(shop_id,is_active);
+
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -93,6 +109,25 @@ create table if not exists public.sales (
   voided_by uuid references public.profiles(id),
   sold_at timestamptz not null default now()
 );
+
+
+-- TEST REPAIR: debtor ledger used by credit purchases/payments.
+create table if not exists public.debtor_ledger (
+  id uuid primary key default gen_random_uuid(),
+  shop_id text not null,
+  debtor_id uuid not null references public.debtors(id) on delete cascade,
+  purchase_id uuid references public.inventory_purchases(id) on delete set null,
+  type text not null,
+  amount numeric(14,2) not null default 0 check (amount >= 0),
+  payment_mode text not null default 'credit',
+  cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0),
+  upi_amount numeric(14,2) not null default 0 check (upi_amount >= 0),
+  worker_id uuid references public.profiles(id) on delete set null,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists debtor_ledger_shop_idx on public.debtor_ledger(shop_id,created_at desc);
+create index if not exists debtor_ledger_debtor_idx on public.debtor_ledger(debtor_id,created_at desc);
 
 create table if not exists public.daily_closings (
   id uuid primary key default gen_random_uuid(),
