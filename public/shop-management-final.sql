@@ -4012,6 +4012,34 @@ revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,n
 revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) from public,anon;
 grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) to authenticated;
 
+drop function if exists public.add_inventory_purchase(uuid,numeric,numeric,text,numeric);
+
+create or replace function public.add_inventory_purchase(
+  p_product_id uuid,
+  p_quantity_base numeric,
+  p_quantity_display numeric,
+  p_purchase_unit text,
+  p_purchase_price numeric,
+  p_payment_mode text default 'cash',
+  p_cash_amount numeric default 0,
+  p_upi_amount numeric default 0,
+  p_credit_amount numeric default 0,
+  p_debtor_id uuid default null,
+  p_pre_stock boolean default false,
+  p_supplier_name text default null
+) returns uuid
+language sql security definer set search_path=''
+as $
+  select public.add_inventory_purchase(
+    p_product_id,p_quantity_base,p_quantity_display,p_purchase_unit,p_purchase_price,
+    p_payment_mode,p_cash_amount,p_upi_amount,p_credit_amount,p_debtor_id,
+    p_pre_stock,p_supplier_name,null
+  );
+$;
+
+revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
+grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) to authenticated;
+
 create or replace function public.record_purchase_return(
   p_product_id uuid,p_quantity_base numeric,p_quantity_display numeric,p_return_unit text,
   p_return_price_per_base_unit numeric,p_payment_mode text default 'cash',
