@@ -4369,6 +4369,33 @@ $;
 revoke all on function public.refresh_lifetime_financial_summary(text) from public,anon,authenticated;
 grant execute on function public.refresh_lifetime_financial_summary(text) to authenticated;
 
+-- Keep debtor payments in the same permanent daily aggregate.
+create or replace function public.debtor_financial_aggregate_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path=''
+as $
+declare
+  v_shop text;
+  v_tz text;
+  v_date date;
+begin
+  v_shop:=coalesce(new.shop_id,old.shop_id);
+  select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
+  v_date:=(coalesce(new.created_at,old.created_at) at time zone v_tz)::date;
+  perform public.refresh_daily_financial_summary(v_shop,v_date);
+  return coalesce(new,old);
+end;
+$;
+
+drop trigger if exists debtor_financial_aggregate_trigger on public.debtor_ledger;
+create trigger debtor_financial_aggregate_trigger
+after insert or update or delete on public.debtor_ledger
+for each row execute function public.debtor_financial_aggregate_trigger();
+
+
+
 -- Rebuild permanent aggregates using the configured business-day reset after
 -- all patched functions/triggers are installed.
 do $$
