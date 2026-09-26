@@ -157,7 +157,7 @@ const server=http.createServer(async(req,res)=>{
       const token=s.tokens.access_token;
       await supa("/v1/projects/"+encodeURIComponent(ref)+"/database/query",token,{method:"POST",body:JSON.stringify({query:sql,read_only:false})});
       try{
-        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true,mailer_allow_unverified_email_sign_ins:true})});
+        await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true})});
       }catch(e){
         const detail=e instanceof Error?e.message:String(e);
         return json(res,500,{error:"Database installed, but Supabase Auth configuration failed.",detail});
