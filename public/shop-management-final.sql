@@ -4358,3 +4358,50 @@ create table if not exists public.automatic_day_end_snapshots (
   worker_breakdown jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+
+-- FINAL SAFE CLEAR-ALL RPC (unique name; avoids legacy function versions)
+create or replace function public.clear_all_shop_data_v2()
+returns void
+language plpgsql
+security definer
+set search_path=''
+as $clear_all_v2$
+begin
+  if not (select public.is_owner()) then
+    raise exception 'Owner only';
+  end if;
+
+  delete from public.debtor_ledger where true;
+  delete from public.credit_ledger where true;
+  delete from public.sale_transactions where true;
+  delete from public.sales where true;
+  delete from public.inventory_purchases where true;
+  delete from public.daily_closings where true;
+  delete from public.day_end_summary_lines where true;
+  delete from public.day_end_summaries where true;
+  delete from public.automatic_day_end_snapshots where true;
+  delete from public.daily_financial_summaries where true;
+  delete from public.lifetime_financial_summaries where true;
+  delete from public.creditor_daily_financial_aggregates where true;
+  delete from public.audit_logs where true;
+
+  perform set_config('shop.allow_stock_change','on',true);
+  update public.products
+  set current_stock_base=0, updated_at=now()
+  where id is not null;
+  perform set_config('shop.allow_stock_change','off',true);
+
+  insert into public.audit_logs(actor_id,action,entity_type,details)
+  values(
+    auth.uid(),
+    'shop_data_cleared',
+    'shop',
+    jsonb_build_object('cleared_at',now())
+  );
+end;
+$clear_all_v2$;
+
+revoke all on function public.clear_all_shop_data_v2() from public,anon;
+grant execute on function public.clear_all_shop_data_v2() to authenticated;
+
