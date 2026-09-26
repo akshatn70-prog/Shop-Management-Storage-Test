@@ -3964,7 +3964,7 @@ begin
     shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
     total_profit,cash_profit,upi_profit,credit_profit,creditor_amount,
     purchase_cash,purchase_upi,purchase_credit,total_purchases,pre_stock_purchases,
-    sales_returns,purchase_returns,sales_return_profit_impact,updated_at)
+    sales_returns,purchase_returns,sales_return_profit_impact,debtor_payment_cash,debtor_payment_upi,debtor_payment_total,updated_at)
   select p_shop_id,p_business_date,
     coalesce(s.tx_count,0),
     round(coalesce(s.revenue,0)-coalesce(r.sales_ret,0),2),
@@ -3981,7 +3981,7 @@ begin
     coalesce(p.credit_purchase,0)-coalesce(r.purchase_credit,0),
     coalesce(p.total_purchase,0)-coalesce(r.purchase_ret,0),
     coalesce(p.pre_stock_purchase,0),
-    coalesce(r.sales_ret,0),coalesce(r.purchase_ret,0),coalesce(r.sales_profit_impact,0),now()
+    coalesce(r.sales_ret,0),coalesce(r.purchase_ret,0),coalesce(r.sales_profit_impact,0),coalesce(d.pay_cash,0),coalesce(d.pay_upi,0),coalesce(d.pay_total,0),now()
   from (select 1) seed
   left join lateral (
     select count(distinct coalesce(s.transaction_id,s.id))::integer tx_count,
@@ -4005,6 +4005,13 @@ begin
     from public.inventory_purchases i join public.profiles w on w.id=i.purchased_by
     where w.shop_id=p_shop_id and public.business_date(i.purchased_at)=p_business_date
   ) p on true
+  left join lateral (
+    select coalesce(sum(case when type='payment_made' then cash_amount else 0 end),0)::numeric pay_cash,
+      coalesce(sum(case when type='payment_made' then upi_amount else 0 end),0)::numeric pay_upi,
+      coalesce(sum(case when type='payment_made' then amount else 0 end),0)::numeric pay_total
+    from public.debtor_ledger dl
+    where dl.shop_id=p_shop_id and public.business_date(dl.created_at)=p_business_date
+  ) d on true
   left join lateral (
     select coalesce(sum(case when return_type='sale' then total_amount else 0 end),0)::numeric sales_ret,
       coalesce(sum(case when return_type='sale' then cash_amount else 0 end),0)::numeric sales_cash,
@@ -4067,3 +4074,24 @@ begin
  if new is not null then perform public.refresh_daily_financial_summary(v_shop,public.business_date(new.purchased_at)); end if;
  perform public.refresh_lifetime_financial_summary(v_shop); return coalesce(new,old);
 end; $$;
+
+create or replace function public.reconcile_credit_split_sales_rounding()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare tx public.sale_transactions; last_id uuid; desired_upi numeric; other_upi numeric; adjusted numeric;
+begin
+ select * into tx from public.sale_transactions where id=new.transaction_id;
+ if tx.payment_mode='credit_split' then
+   select s.id into last_id from public.sales s where s.transaction_id=new.transaction_id order by s.id desc limit 1;
+   if last_id is not null then
+     select coalesce(sum(s.upi_amount),0) into other_upi from public.sales s where s.transaction_id=new.transaction_id and s.id<>last_id;
+     desired_upi:=round(tx.upi_amount,2);
+     adjusted:=round(desired_upi-other_upi,2);
+     if adjusted>=0 then update public.sales set upi_amount=adjusted where id=last_id; end if;
+   end if;
+ end if;
+ return new;
+end; $$;
+drop trigger if exists reconcile_credit_split_sales_rounding on public.sales;
+create trigger reconcile_credit_split_sales_rounding
+after insert on public.sales
+for each row execute function public.reconcile_credit_split_sales_rounding();
