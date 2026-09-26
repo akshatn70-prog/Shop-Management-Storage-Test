@@ -236,7 +236,6 @@ const server=http.createServer(async(req,res)=>{
       }
       const project=s?.projects?.find(p=>p.ref===ref);
       if(s && !project)return json(res,400,{error:"Selected Supabase project was not found in your account."});
-      if(!project)return json(res,400,{error:"Selected Supabase project was not found in your account."});
       if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))return json(res,400,{error:"Enter a valid email address."});
       try{
         const secret=await getSecretKey(ref,accessToken);
