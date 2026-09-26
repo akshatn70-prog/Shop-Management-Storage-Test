@@ -587,7 +587,7 @@ function login(msg=""){
 
   document.querySelector<HTMLFormElement>("#connectForm")?.addEventListener("submit",async e=>{
    e.preventDefault();
-   const f=e.currentTarget,fd=new FormData(f),url=String(fd.get("url")||"").trim(),key=String(fd.get("key")||"").trim();
+   const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),url=String(fd.get("url")||"").trim(),key=String(fd.get("key")||"").trim();
    if(!url||!key)return notify("Enter both the Supabase URL and publishable key.","error");
    await checkDatabase(url,key);
   });
@@ -642,7 +642,7 @@ function login(msg=""){
 
   document.querySelector<HTMLFormElement>("#realLogin")?.addEventListener("submit",async e=>{
    e.preventDefault();
-   const f=e.currentTarget,fd=new FormData(f),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+   const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
    if(!email||!password)return notify("Enter your email and password.","error");
    const r=await supabase!.auth.signInWithPassword({email,password});
    if(r.error)return renderAuthError(r.error.message);
