@@ -1,7 +1,4 @@
--- Fix Clear All so it works across both current and legacy shop databases.
--- It intentionally clears transaction/history data only. Products, settings,
--- profiles and auth accounts are preserved, matching the existing button behavior.
-
+-- Clear All: delete transactional + master shop data while preserving accounts/settings.
 create or replace function public.clear_all_shop_data_v2()
 returns void
 language plpgsql
@@ -24,7 +21,10 @@ declare
     'daily_financial_summaries',
     'lifetime_financial_summaries',
     'creditor_daily_financial_aggregates',
-    'audit_logs'
+    'audit_logs',
+    'products',
+    'debtors',
+    'creditors'
   ];
   v_existing text[] := array[]::text[];
 begin
@@ -42,13 +42,11 @@ begin
     execute 'truncate table ' || array_to_string(v_existing, ', ') || ' restart identity';
   end if;
 
-  perform set_config('shop.allow_stock_change','on',true);
-  update public.products
-  set current_stock_base=0,
-      updated_at=now()
-  where id is not null;
-  perform set_config('shop.allow_stock_change','off',true);
-
+  /*
+    Keep the existing app usable after Clear All:
+    owner/worker profiles, authentication accounts, shop settings and the
+    connected Supabase configuration are intentionally preserved.
+  */
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values(
     auth.uid(),
@@ -56,7 +54,10 @@ begin
     'shop',
     jsonb_build_object(
       'cleared_at',now(),
-      'tables_cleared',coalesce(v_existing, array[]::text[])
+      'tables_cleared',coalesce(v_existing, array[]::text[]),
+      'products_deleted',true,
+      'debtors_deleted',true,
+      'creditors_deleted',true
     )
   );
 end;
