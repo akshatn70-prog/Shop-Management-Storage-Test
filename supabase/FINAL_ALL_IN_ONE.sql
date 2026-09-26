@@ -2391,6 +2391,26 @@ begin
     perform set_config('shop.allow_stock_change','off',true);
   end loop;
 
+  -- Reconcile per-line UPI rounding for credit-split carts after all lines exist.
+  -- The transaction-level amount remains authoritative; the final line absorbs the cent remainder.
+  if actual_payment_mode='credit_split' then
+    update public.sales s
+    set upi_amount=round(
+      greatest(
+        0,
+        upi_paid - coalesce((
+          select sum(s2.upi_amount) from public.sales s2
+          where s2.transaction_id=v_tx_id and s2.id<>s.id
+        ),0)
+      ),2)
+    where s.id=(
+      select s3.id from public.sales s3
+      where s3.transaction_id=v_tx_id
+      order by s3.id desc
+      limit 1
+    );
+  end if;
+
   if actual_payment_mode in ('credit','credit_split') then
     insert into public.credit_ledger(
       shop_id,creditor_id,sale_transaction_id,sale_id,type,amount,
@@ -4075,23 +4095,3 @@ begin
  perform public.refresh_lifetime_financial_summary(v_shop); return coalesce(new,old);
 end; $$;
 
-create or replace function public.reconcile_credit_split_sales_rounding()
-returns trigger language plpgsql security definer set search_path='' as $$
-declare tx public.sale_transactions; last_id uuid; desired_upi numeric; other_upi numeric; adjusted numeric;
-begin
- select * into tx from public.sale_transactions where id=new.transaction_id;
- if tx.payment_mode='credit_split' then
-   select s.id into last_id from public.sales s where s.transaction_id=new.transaction_id order by s.id desc limit 1;
-   if last_id is not null then
-     select coalesce(sum(s.upi_amount),0) into other_upi from public.sales s where s.transaction_id=new.transaction_id and s.id<>last_id;
-     desired_upi:=round(tx.upi_amount,2);
-     adjusted:=round(desired_upi-other_upi,2);
-     if adjusted>=0 then update public.sales set upi_amount=adjusted where id=last_id; end if;
-   end if;
- end if;
- return new;
-end; $$;
-drop trigger if exists reconcile_credit_split_sales_rounding on public.sales;
-create trigger reconcile_credit_split_sales_rounding
-after insert on public.sales
-for each row execute function public.reconcile_credit_split_sales_rounding();
