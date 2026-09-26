@@ -106,10 +106,14 @@ async function register(){
       if(auth.error && /already registered|already exists/i.test(auth.error.message||"")){
         auth=await client.auth.signInWithPassword({email,password});
       }
-      if(auth.error)throw new Error(auth.error.message);
+      if(auth.error && !/already registered|already exists/i.test(auth.error.message||""))throw new Error(auth.error.message);
       if(!auth.data.session){
+        message("Confirming your Shop Management email automatically...");
+        await api("/api/oauth/confirm-user",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email})});
         const sign=await client.auth.signInWithPassword({email,password});
-        if(sign.error)throw new Error("Account created. Sign in once with your email and password: "+sign.error.message);
+        if(sign.error)throw new Error("Automatic email confirmation failed: "+sign.error.message);
+      }else{
+        await api("/api/oauth/confirm-user",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref,email})}).catch(()=>{});
       }
       busy=false;
       location.reload();
