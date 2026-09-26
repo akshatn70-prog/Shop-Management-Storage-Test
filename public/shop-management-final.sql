@@ -4128,8 +4128,8 @@ begin
     perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
   end loop;
   for r in
-    select distinct r.shop_id, public.business_date(r.returned_at) business_date
-    from public.returns r
+    select distinct ret.shop_id, public.business_date(ret.returned_at) business_date
+    from public.returns ret
   loop
     perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
   end loop;
