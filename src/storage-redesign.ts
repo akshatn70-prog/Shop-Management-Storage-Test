@@ -328,11 +328,11 @@ function bindCart(){
  const searchBtn=document.querySelector<HTMLButtonElement>("#cartSearchBtn");
  const root=document.querySelector<HTMLElement>("#cartProducts");
 
- const update=()=>{
+ const update=(resetPrice=true)=>{
   const p=products.find(x=>x.id===sel.value);
   if(!p)return;
-  price.value=String(p.selling_price_per_base_unit);
-  unit.value=p.unit_type==="piece"?"piece":"grams";
+  if(resetPrice)price.value=String(p.selling_price_per_base_unit);
+  if(resetPrice)unit.value=p.unit_type==="piece"?"piece":"grams";
   const n=Number(qty.value)||0;
   const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
   const preview=document.querySelector("#cartPreview");
