@@ -144,7 +144,8 @@ const server=http.createServer(async(req,res)=>{
       try{
         await supa("/v1/projects/"+encodeURIComponent(ref)+"/config/auth",token,{method:"PATCH",body:JSON.stringify({disable_signup:false,external_email_enabled:true,mailer_autoconfirm:true,mailer_allow_unverified_email_sign_ins:true})});
       }catch(e){
-        return json(res,500,{error:"Database installed, but Supabase email confirmation could not be disabled automatically. Please make sure the OAuth app has Auth: Write permission, then authorize Shop Management again."});
+        const detail=e instanceof Error?e.message:String(e);
+        return json(res,500,{error:"Database installed, but Supabase Auth configuration failed.",detail});
       }
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
