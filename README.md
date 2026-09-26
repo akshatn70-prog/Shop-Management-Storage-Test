@@ -71,7 +71,7 @@ Mistakes are corrected by **voiding** a sale with a reason and restoring its sto
 - Daily Summary separates sales revenue, sales Cash/UPI, credit sales, and credit collections.
 - Daily Summary can be downloaded as a TXT file. On Android, the app writes the file to the accessible Downloads folder where Android permits.
 
-The complete SQL download includes the additive cart/credit migration. Existing single-product sales and the existing `record_sale` RPC remain supported.
+The customer SQL download is a single consolidated database setup. It includes the current sales, cart, credit/debtor, returns, reports, worker permissions, security/RLS and verification functionality. Existing single-product sales and the `record_sale` RPC remain supported.
 
 ## Security
 
