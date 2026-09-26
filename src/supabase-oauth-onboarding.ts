@@ -72,7 +72,18 @@ async function register(){
       }
       if(!ready)throw new Error("Supabase authorization timed out. Start registration again.");
       const projects=ready.projects||[];
-      const organizations=ready.organizations||[];
+      let organizations=ready.organizations||[];
+      if(!organizations.length){
+        message("Loading your Supabase organizations...");
+        for(let i=0;i<8 && !organizations.length;i++){
+          await new Promise(r=>setTimeout(r,1200));
+          const refreshed=await api("/api/oauth/status?session="+encodeURIComponent(start.session_id));
+          if(refreshed.status==="ready")organizations=refreshed.organizations||[];
+        }
+      }
+      if(!organizations.length){
+        throw new Error("Your Supabase organization could not be loaded. Please start registration again and authorize Shop Management again. If you recently changed OAuth permissions, re-authorizing is required for the new scopes.");
+      }
       let ref="";
       show('<div class="brand big">SHOP MANAGEMENT</div><h2>Connect your Supabase account</h2><p class="muted">You are now connected to the Supabase account you authorized. Choose where this shop should be stored.</p><div class="notice">Use the existing project you want, or create a new Supabase project in your authorized account. Shop Management never receives your Supabase password.</div>'+(projects.length?'<label>Existing project<select id="projectPick" class="wide"><option value="">Select existing project...</option>'+projects.map((p:any)=>'<option value="'+esc(p.ref)+'">'+esc(p.name)+" — "+esc(p.region||"")+'</option>').join("")+'</select></label><button id="installSelected" class="primary wide">Use Existing Project</button>':'<div class="notice">No existing Supabase projects were found in this account.</div>')+'<div style="text-align:center;margin:14px 0;color:#64748b">OR</div><button id="newProject" class="ghost wide">Create New Supabase Project</button>');
         await new Promise<void>((resolve,reject)=>{
