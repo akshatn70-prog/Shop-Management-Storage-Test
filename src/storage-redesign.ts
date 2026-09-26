@@ -349,7 +349,13 @@ function settingsView(){
 
 async function saveSale(item:any,mode:string,cash:number,upi:number,credit:number,creditorId:string|null){
  if(demo){const p=products.find(x=>x.id===item.product_id);if(!p)throw new Error("Product not found");const total=item.quantity_base*item.selling_price_per_base_unit;sales.unshift({...item,id:"demo-sale-"+Date.now(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:total,gross_profit:(item.selling_price_per_base_unit-p.purchase_price_per_base_unit)*item.quantity_base,cash_amount:cash,upi_amount:upi,credit_amount:credit,payment_mode:mode,voided:false,transaction_id:"demo-tx-"+Date.now(),products:{name:p.name},profiles:{full_name:profile!.full_name}});p.current_stock_base-=item.quantity_base;if(credit>0&&creditorId)ledger.unshift({id:"demo-ledger-"+Date.now(),creditor_id:creditorId,type:"credit_sale",amount:credit,payment_mode:mode,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});return}
- const r=await supabase!.rpc("complete_cart_sale",{p_worker_id:profile!.id,p_items:[item],p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_creditor_id:creditorId});if(r.error)throw r.error;
+ if(mode==="cash"||mode==="upi"||mode==="split"){
+  const r=await supabase!.rpc("record_sale",{p_product_id:item.product_id,p_worker_id:profile!.id,p_quantity_base:item.quantity_base,p_quantity_display:item.quantity_display,p_sold_unit:item.sold_unit,p_selling_price_per_base_unit:item.selling_price_per_base_unit,p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi});
+  if(r.error)throw r.error;
+  return;
+ }
+ const r=await supabase!.rpc("complete_cart_sale",{p_worker_id:profile!.id,p_items:[item],p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_creditor_id:creditorId});
+ if(r.error)throw r.error;
 }
 
 function bindSale(){
@@ -568,7 +574,7 @@ function bindSettings(){
 
 function returnsView(){
  const owner=profile?.role==="owner";if(!owner)return '<section class="page"><div class="panel"><h2>Returns</h2><div class="notice danger">Returns are owner-only.</div></div></section>';
- return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary">↩ Purchase Return</button><button id="saleReturnBtn" class="ghost">↪ Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+returnsRows.slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc(r.products?.name||r.product_name_snapshot||"Deleted product")+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
+ return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary">&#8617; Purchase Return</button><button id="saleReturnBtn" class="ghost">&#8618; Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+returnsRows.slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc(r.products?.name||r.product_name_snapshot||"Deleted product")+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
 }
 function bindReturns(){document.querySelector("#purchaseReturnBtn")?.addEventListener("click",()=>returnForm("purchase"));document.querySelector("#saleReturnBtn")?.addEventListener("click",()=>returnForm("sale"))}
 function returnForm(type:"purchase"|"sale"){
