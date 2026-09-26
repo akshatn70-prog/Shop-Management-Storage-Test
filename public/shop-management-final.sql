@@ -3353,14 +3353,14 @@ set search_path = ''
 as $$
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
-  delete from public.credit_ledger;
-  delete from public.sales;
-  delete from public.sale_transactions;
-  delete from public.inventory_purchases;
-  delete from public.audit_logs;
-  delete from public.daily_financial_summaries;
-  delete from public.lifetime_financial_summaries;
-  delete from public.creditor_daily_financial_aggregates;
+  delete from public.credit_ledger where true;
+  delete from public.sales where true;
+  delete from public.sale_transactions where true;
+  delete from public.inventory_purchases where true;
+  delete from public.audit_logs where true;
+  delete from public.daily_financial_summaries where true;
+  delete from public.lifetime_financial_summaries where true;
+  delete from public.creditor_daily_financial_aggregates where true;
   perform set_config('shop.allow_stock_change','on',true);
   update public.products set current_stock_base=0,updated_at=now();
   perform set_config('shop.allow_stock_change','off',true);
