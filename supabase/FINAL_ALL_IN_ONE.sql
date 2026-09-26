@@ -573,7 +573,6 @@ end;
 $purchase$;
 
 revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) from public,anon;
-revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
 grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) to authenticated;
 
 drop function if exists public.record_sale(uuid,uuid,numeric,numeric,text,numeric);
@@ -1171,7 +1170,6 @@ grant select, insert on public.day_end_summary_lines to authenticated;
 grant select, update on public.shop_settings to authenticated;
 grant select on public.audit_logs to authenticated;
 
-grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric) to authenticated;
 grant execute on function public.record_sale(uuid,uuid,numeric,numeric,text,numeric,text,numeric,numeric) to authenticated;
 grant execute on function public.submit_daily_closing(date,numeric,numeric,uuid) to authenticated;
 grant execute on function public.void_sale(uuid,text) to authenticated;
@@ -4055,8 +4053,6 @@ begin
 end;
 $$;
 
-revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric) from public,anon,authenticated;
-revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon,authenticated;
 revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) from public,anon;
 grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text,numeric) to authenticated;
 
@@ -4085,8 +4081,6 @@ as $compat$
   );
 $compat$;
 
-revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
-grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) to authenticated;
 
 create or replace function public.record_purchase_return(
   p_product_id uuid,p_quantity_base numeric,p_quantity_display numeric,p_return_unit text,
