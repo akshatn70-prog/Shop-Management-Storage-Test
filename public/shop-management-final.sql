@@ -3703,22 +3703,57 @@ revoke insert,update,delete on table public.debtor_ledger from authenticated;
 -- Include debtor detail in the existing shop-data clear operation.
 create or replace function public.clear_all_shop_data()
 returns void
-language plpgsql security definer set search_path=''
-as $$
+language plpgsql
+security definer
+set search_path = ''
+as $clear_all$
+declare
+  v_shop_id text;
 begin
-  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
-  delete from public.debtor_ledger;
-  delete from public.credit_ledger;
-  delete from public.sales;
-  delete from public.sale_transactions;
-  delete from public.inventory_purchases;
-  delete from public.audit_logs;
-  delete from public.daily_financial_summaries;
-  delete from public.lifetime_financial_summaries;
-  delete from public.creditor_daily_financial_aggregates;
-  update public.products set current_stock_base=0,updated_at=now();
+  if not (select public.is_owner()) then
+    raise exception 'Owner only';
+  end if;
+
+  v_shop_id := (select shop_id from public.profiles where id=(select auth.uid()));
+  if v_shop_id is null or btrim(v_shop_id)='' then
+    raise exception 'Shop is not configured';
+  end if;
+
+  -- Clear transaction/history data for the current shop only.
+  -- Every DELETE intentionally has a WHERE clause so it cannot accidentally
+  -- wipe another shop and is compatible with the database safety policy.
+  delete from public.debtor_ledger where shop_id=v_shop_id;
+  delete from public.credit_ledger where shop_id=v_shop_id;
+  delete from public.sale_transactions where shop_id=v_shop_id;
+  delete from public.sales where shop_id=v_shop_id;
+  delete from public.inventory_purchases where shop_id=v_shop_id;
+  delete from public.daily_closings where shop_id=v_shop_id;
+  delete from public.day_end_summary_lines where shop_id=v_shop_id;
+  delete from public.day_end_summaries where shop_id=v_shop_id;
+  delete from public.automatic_day_end_snapshots where shop_id=v_shop_id;
+  delete from public.daily_financial_summaries where shop_id=v_shop_id;
+  delete from public.lifetime_financial_summaries where shop_id=v_shop_id;
+  delete from public.creditor_daily_financial_aggregates where shop_id=v_shop_id;
+  delete from public.audit_logs where shop_id=v_shop_id;
+
+  perform set_config('shop.allow_stock_change','on',true);
+  update public.products
+  set current_stock_base=0, updated_at=now()
+  where shop_id=v_shop_id;
+  perform set_config('shop.allow_stock_change','off',true);
+
+  -- Keep one audit record proving the clear action happened.
+  insert into public.audit_logs(actor_id,shop_id,action,entity_type,details)
+  values(
+    (select auth.uid()),
+    v_shop_id,
+    'shop_data_cleared',
+    'shop',
+    jsonb_build_object('cleared_at',now())
+  );
 end;
-$$;
+$clear_all$;
+
 revoke all on function public.clear_all_shop_data() from public,anon;
 grant execute on function public.clear_all_shop_data() to authenticated;
 
