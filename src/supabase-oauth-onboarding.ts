@@ -94,7 +94,6 @@ async function register(){
             });
           });
         });
-      }
       show('<div class="brand big">SHOP MANAGEMENT</div><h2>Installing...</h2><p class="muted">Creating the database, security, functions and Auth settings.</p><div class="notice">Please keep this screen open.</div>');
       const installed=await api("/api/oauth/install",{method:"POST",body:JSON.stringify({session_id:start.session_id,project_ref:ref})});
       localStorage.setItem(URL_KEY,installed.url);
