@@ -247,7 +247,7 @@ create index if not exists audit_actor_idx on public.audit_logs(actor_id);
 create or replace function public.is_owner()
 returns boolean
 language sql stable security definer set search_path = ''
-as $$
+as $$$
   select exists(
     select 1 from public.profiles
     where id = (select auth.uid()) and role = 'owner' and is_active = true
@@ -260,7 +260,7 @@ grant execute on function public.is_owner() to authenticated;
 create or replace function public.is_active_user()
 returns boolean
 language sql stable security definer set search_path = ''
-as $$
+as $$$
   select exists(
     select 1 from public.profiles
     where id = (select auth.uid()) and is_active = true
@@ -273,7 +273,7 @@ grant execute on function public.is_active_user() to authenticated;
 create or replace function public.refresh_automatic_day_end_snapshot(p_business_date date)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare tz text; product_json jsonb; worker_json jsonb;
 begin
   select timezone into tz from public.shop_settings where id=1;
@@ -323,7 +323,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   tz text;
   d date;
@@ -363,7 +363,7 @@ create or replace function public.write_audit(
   p_details jsonb default '{}'::jsonb
 ) returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 begin
   insert into public.audit_logs(actor_id,action,entity_type,entity_id,details)
   values((select auth.uid()),p_action,p_entity_type,p_entity_id,coalesce(p_details,'{}'::jsonb));
@@ -382,7 +382,7 @@ create or replace function public.create_product(
   p_low_stock_threshold_base numeric
 ) returns uuid
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   new_id uuid;
   opening_cost numeric;
@@ -437,7 +437,7 @@ grant execute on function public.create_product(text,public.product_unit,numeric
 create or replace function public.audit_row_change()
 returns trigger
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   v_old jsonb := case when TG_OP <> 'INSERT' then to_jsonb(OLD) else '{}'::jsonb end;
   v_new jsonb := case when TG_OP <> 'DELETE' then to_jsonb(NEW) else '{}'::jsonb end;
@@ -526,7 +526,7 @@ create or replace function public.add_inventory_purchase(
 language plpgsql
 security definer
 set search_path=''
-as $purchase$
+as $$purchase$
 declare
   p public.products;
   total numeric;
@@ -623,7 +623,7 @@ create or replace function public.record_sale(
   p_upi_amount numeric default null
 ) returns public.sales
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   p public.products;
   total_sale numeric;
@@ -739,7 +739,7 @@ revoke execute on function public.record_sale(uuid,uuid,numeric,numeric,text,num
 create or replace function public.void_sale(p_sale_id uuid, p_reason text)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   s public.sales;
 begin
@@ -768,7 +768,7 @@ $$;
 create or replace function public.normalize_day_end_line()
 returns trigger
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   p public.products;
 begin
@@ -798,7 +798,7 @@ for each row execute function public.normalize_day_end_line();
 create or replace function public.submit_day_end_summary(p_summary_id uuid)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   s public.day_end_summaries;
   total_expected numeric(14,2);
@@ -840,7 +840,7 @@ $$;
 create or replace function public.confirm_day_end_summary(p_summary_id uuid)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   s public.day_end_summaries;
   l record;
@@ -894,7 +894,7 @@ create or replace function public.submit_daily_closing(
   p_closing_id uuid default null
 ) returns uuid
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare
   closing_id uuid;
   expected numeric;
@@ -959,7 +959,7 @@ grant execute on function public.submit_daily_closing(date,numeric,numeric,uuid)
 create or replace function public.approve_closing(p_closing_id uuid)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
 
@@ -976,7 +976,7 @@ $$;
 create or replace function public.lock_closing(p_closing_id uuid)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
 
@@ -995,7 +995,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $clear_all$
+as $$clear_all$
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
@@ -1051,7 +1051,7 @@ grant execute on function public.clear_all_shop_data() to authenticated;
 create or replace function public.delete_product(p_product_id uuid)
 returns void
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 declare p public.products;
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
@@ -1084,7 +1084,7 @@ using (
 create or replace function public.protect_last_owner()
 returns trigger
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 begin
   if OLD.role='owner' and OLD.is_active=true
      and (NEW.role<>'owner' or NEW.is_active=false)
@@ -1114,7 +1114,7 @@ using ((select public.is_active_user()) and (is_active=true or (select public.is
 create or replace function public.protect_product_stock_direct_update()
 returns trigger
 language plpgsql security definer set search_path = ''
-as $$
+as $$$
 begin
   if OLD.current_stock_base is distinct from NEW.current_stock_base
      and current_setting('shop.allow_stock_change', true) is distinct from 'on'
@@ -1278,7 +1278,7 @@ language plpgsql
 volatile
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_id text;
 begin
@@ -1324,7 +1324,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop_id text;
   v_requested text := upper(trim(coalesce(p_shop_id, '')));
@@ -1371,7 +1371,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop_id text;
   v_has_any_profile boolean;
@@ -1457,7 +1457,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_uid uuid := (select auth.uid());
   v_confirmed timestamptz;
@@ -1515,7 +1515,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 begin
   if new.email_confirmed_at is not null
      and old.email_confirmed_at is null then
@@ -1544,7 +1544,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   missing text[] := '{}';
   current_shop_id text;
@@ -1920,7 +1920,7 @@ returns text
 language sql
 immutable
 set search_path = ''
-as $$
+as $$$
   select case
     when regexp_replace(coalesce(p_mobile,''), '[^0-9]', '', 'g') ~ '^91[0-9]{10}$'
       then right(regexp_replace(coalesce(p_mobile,''), '[^0-9]', '', 'g'), 10)
@@ -1936,7 +1936,7 @@ language sql
 stable
 security definer
 set search_path = ''
-as $$
+as $$$
   select coalesce(sum(
     case
       when type='credit_sale' then amount
@@ -1960,7 +1960,7 @@ returns public.creditors
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop_id text;
   v_mobile text;
@@ -2018,7 +2018,7 @@ create or replace function public.record_sale(
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   p public.products;
   total_sale numeric;
@@ -2194,7 +2194,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop_id text;
   v_tx_id uuid;
@@ -2553,7 +2553,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop_id text;
   v_creditor public.creditors;
@@ -2681,7 +2681,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $clear_all$
+as $$clear_all$
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
@@ -2739,7 +2739,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   missing text[] := '{}';
 begin
@@ -2936,7 +2936,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_tz text;
 begin
@@ -3034,7 +3034,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 begin
   insert into public.lifetime_financial_summaries(
     shop_id,lifetime_sales,lifetime_purchases,lifetime_profit,updated_at
@@ -3069,7 +3069,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_tz text;
 begin
@@ -3150,7 +3150,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop text;
   v_tz text;
@@ -3178,7 +3178,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop text;
   v_tz text;
@@ -3206,7 +3206,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_shop text;
   v_tz text;
@@ -3240,7 +3240,7 @@ returns public.inventory_purchases
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   r public.inventory_purchases;
   v_shop text;
@@ -3284,7 +3284,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   v_sales_deleted bigint:=0;
   v_purchase_deleted bigint:=0;
@@ -3389,7 +3389,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $$$
 declare
   missing text[] := '{}';
 begin
@@ -3417,7 +3417,7 @@ returns void
 language plpgsql
 security definer
 set search_path = ''
-as $clear_all$
+as $$clear_all$
 begin
   if not (select public.is_owner()) then
     raise exception 'Owner only';
@@ -3521,7 +3521,7 @@ alter table public.daily_financial_summaries
 create or replace function public.business_date(p_ts timestamptz default now())
 returns date
 language plpgsql stable security definer set search_path=''
-as $$
+as $$$
 declare
   tz text;
   reset_text text;
@@ -3557,7 +3557,7 @@ create or replace function public.add_inventory_purchase(
   p_selling_price numeric default null
 ) returns uuid
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   p public.products;
   total numeric;
@@ -3693,7 +3693,7 @@ create or replace function public.add_inventory_purchase(
   p_supplier_name text default null
 ) returns uuid
 language sql security definer set search_path=''
-as $compat$
+as $$compat$
   select public.add_inventory_purchase(
     p_product_id,p_quantity_base,p_quantity_display,p_purchase_unit,p_purchase_price,
     p_payment_mode,p_cash_amount,p_upi_amount,p_credit_amount,p_debtor_id,
@@ -3708,7 +3708,7 @@ create or replace function public.record_purchase_return(
   p_source_id uuid default null,p_reason text default '',p_account_id uuid default null
 ) returns uuid
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   p public.products; src public.inventory_purchases; total numeric; v_id uuid; debtor uuid; v_shop text;
 begin
@@ -3755,7 +3755,7 @@ create or replace function public.record_sale_return(
   p_source_id uuid default null,p_reason text default '',p_account_id uuid default null
 ) returns uuid
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   p public.products; src public.sales; total numeric; cost numeric; profit numeric; v_id uuid; creditor uuid; v_shop text;
 begin
@@ -3806,7 +3806,7 @@ grant execute on function public.record_sale_return(uuid,numeric,numeric,text,nu
 
 -- Returns are part of the permanent daily financial picture.
 create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
-returns void language plpgsql security definer set search_path='' as $$
+returns void language plpgsql security definer set search_path='' as $$$
 begin
   insert into public.daily_financial_summaries(
     shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
@@ -3888,7 +3888,7 @@ $$;
 revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
 
 create or replace function public.returns_financial_aggregate_trigger()
-returns trigger language plpgsql security definer set search_path='' as $$
+returns trigger language plpgsql security definer set search_path='' as $$$
 declare v_shop text; v_date date;
 begin
  v_shop:=coalesce(new.shop_id,old.shop_id); v_date:=public.business_date(coalesce(new.returned_at,old.returned_at));
@@ -3907,7 +3907,7 @@ grant select on public.returns to authenticated;
 
 -- Keep purchase and sales aggregate triggers on the configured business day.
 create or replace function public.sales_financial_aggregate_trigger()
-returns trigger language plpgsql security definer set search_path='' as $$
+returns trigger language plpgsql security definer set search_path='' as $$$
 declare v_shop text;
 begin
  select shop_id into v_shop from public.profiles where id=coalesce(new.worker_id,old.worker_id);
@@ -3917,7 +3917,7 @@ begin
 end; $$;
 
 create or replace function public.purchase_financial_aggregate_trigger()
-returns trigger language plpgsql security definer set search_path='' as $$
+returns trigger language plpgsql security definer set search_path='' as $$$
 declare v_shop text;
 begin
  select shop_id into v_shop from public.profiles where id=coalesce(new.purchased_by,old.purchased_by);
@@ -4025,7 +4025,7 @@ where pr.debtor_id is not null
 
 create or replace function public.normalize_debtor_mobile(p_mobile text)
 returns text language sql immutable set search_path=''
-as $$
+as $$$
   select case
     when regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}
 -- all patched functions/triggers are installed.
@@ -4086,7 +4086,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -4157,7 +4157,7 @@ $$;
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   v_shop text;
   v_mobile text;
@@ -4202,7 +4202,7 @@ create or replace function public.pay_debtor(
 )
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   d public.debtors;
   v_shop text;
@@ -4298,7 +4298,7 @@ where i.product_id=p.id
 create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
 returns void
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare v_tz text;
 begin
   select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
@@ -4404,7 +4404,7 @@ grant execute on function public.refresh_daily_financial_summary(text,date) to a
 create or replace function public.refresh_lifetime_financial_summary(p_shop_id text)
 returns void
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 begin
   insert into public.lifetime_financial_summaries(shop_id,lifetime_sales,lifetime_purchases,lifetime_profit,updated_at)
   select p_shop_id,coalesce(sum(total_revenue),0),coalesce(sum(total_purchases+pre_stock_purchases),0),coalesce(sum(total_profit),0),now()
@@ -4426,7 +4426,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path=''
-as $$
+as $$$
 declare
   v_shop text;
   v_tz text;
@@ -4506,7 +4506,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -4623,7 +4623,7 @@ grant select on public.debtor_ledger to authenticated;
 
 create or replace function public.normalize_debtor_mobile(p_mobile text)
 returns text language sql immutable set search_path=''
-as $
+as $$
   select case
     when regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}
 -- all patched functions/triggers are installed.
@@ -4684,7 +4684,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -4750,11 +4750,11 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
       then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
     else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
   end
-$;
+$$;
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   v_shop text;
   v_mobile text;
@@ -4788,7 +4788,7 @@ begin
   end;
   return r;
 end;
-$;
+$$;
 revoke all on function public.get_or_create_debtor(text,text) from public,anon;
 grant execute on function public.get_or_create_debtor(text,text) to authenticated;
 
@@ -4798,7 +4798,7 @@ create or replace function public.pay_debtor(
 )
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   d public.debtors;
   v_shop text;
@@ -4864,7 +4864,7 @@ begin
     jsonb_build_object('amount',p_amount,'payment_mode',p_payment_mode,'cash_amount',v_cash,'upi_amount',v_upi));
   return d;
 end;
-$;
+$$;
 revoke all on function public.pay_debtor(uuid,numeric,text,numeric,numeric) from public,anon;
 grant execute on function public.pay_debtor(uuid,numeric,text,numeric,numeric) to authenticated;
 
@@ -4893,7 +4893,7 @@ where i.product_id=p.id
 create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
 returns void
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_tz text;
 begin
   select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
@@ -4991,14 +4991,14 @@ begin
     debtor_payment_cash=excluded.debtor_payment_cash,debtor_payment_upi=excluded.debtor_payment_upi,
     debtor_payment_total=excluded.debtor_payment_total,updated_at=now();
 end;
-$;
+$$;
 revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
 grant execute on function public.refresh_daily_financial_summary(text,date) to authenticated;
 
 create or replace function public.refresh_lifetime_financial_summary(p_shop_id text)
 returns void
 language plpgsql security definer set search_path=''
-as $
+as $$
 begin
   insert into public.lifetime_financial_summaries(shop_id,lifetime_sales,lifetime_purchases,lifetime_profit,updated_at)
   select p_shop_id,coalesce(sum(total_revenue),0),coalesce(sum(total_purchases+pre_stock_purchases),0),coalesce(sum(total_profit),0),now()
@@ -5009,7 +5009,7 @@ begin
     lifetime_profit=excluded.lifetime_profit,
     updated_at=now();
 end;
-$;
+$$;
 revoke all on function public.refresh_lifetime_financial_summary(text) from public,anon,authenticated;
 grant execute on function public.refresh_lifetime_financial_summary(text) to authenticated;
 
@@ -5072,7 +5072,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -5209,7 +5209,7 @@ where pr.debtor_id is not null
 
 create or replace function public.normalize_debtor_mobile(p_mobile text)
 returns text language sql immutable set search_path=''
-as $$
+as $$$
   select case
     when regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}
 -- all patched functions/triggers are installed.
@@ -5270,7 +5270,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -5341,7 +5341,7 @@ $$;
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   v_shop text;
   v_mobile text;
@@ -5386,7 +5386,7 @@ create or replace function public.pay_debtor(
 )
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare
   d public.debtors;
   v_shop text;
@@ -5482,7 +5482,7 @@ where i.product_id=p.id
 create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
 returns void
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 declare v_tz text;
 begin
   select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
@@ -5588,7 +5588,7 @@ grant execute on function public.refresh_daily_financial_summary(text,date) to a
 create or replace function public.refresh_lifetime_financial_summary(p_shop_id text)
 returns void
 language plpgsql security definer set search_path=''
-as $$
+as $$$
 begin
   insert into public.lifetime_financial_summaries(shop_id,lifetime_sales,lifetime_purchases,lifetime_profit,updated_at)
   select p_shop_id,coalesce(sum(total_revenue),0),coalesce(sum(total_purchases+pre_stock_purchases),0),coalesce(sum(total_profit),0),now()
@@ -5610,7 +5610,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path=''
-as $$
+as $$$
 declare
   v_shop text;
   v_tz text;
@@ -5690,7 +5690,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -5807,7 +5807,7 @@ grant select on public.debtor_ledger to authenticated;
 
 create or replace function public.normalize_debtor_mobile(p_mobile text)
 returns text language sql immutable set search_path=''
-as $
+as $$
   select case
     when regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}
 -- all patched functions/triggers are installed.
@@ -5868,7 +5868,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
@@ -5934,11 +5934,11 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
       then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
     else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
   end
-$;
+$$;
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   v_shop text;
   v_mobile text;
@@ -5972,7 +5972,7 @@ begin
   end;
   return r;
 end;
-$;
+$$;
 revoke all on function public.get_or_create_debtor(text,text) from public,anon;
 grant execute on function public.get_or_create_debtor(text,text) to authenticated;
 
@@ -5982,7 +5982,7 @@ create or replace function public.pay_debtor(
 )
 returns public.debtors
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare
   d public.debtors;
   v_shop text;
@@ -6048,7 +6048,7 @@ begin
     jsonb_build_object('amount',p_amount,'payment_mode',p_payment_mode,'cash_amount',v_cash,'upi_amount',v_upi));
   return d;
 end;
-$;
+$$;
 revoke all on function public.pay_debtor(uuid,numeric,text,numeric,numeric) from public,anon;
 grant execute on function public.pay_debtor(uuid,numeric,text,numeric,numeric) to authenticated;
 
@@ -6077,7 +6077,7 @@ where i.product_id=p.id
 create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
 returns void
 language plpgsql security definer set search_path=''
-as $
+as $$
 declare v_tz text;
 begin
   select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
@@ -6175,14 +6175,14 @@ begin
     debtor_payment_cash=excluded.debtor_payment_cash,debtor_payment_upi=excluded.debtor_payment_upi,
     debtor_payment_total=excluded.debtor_payment_total,updated_at=now();
 end;
-$;
+$$;
 revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
 grant execute on function public.refresh_daily_financial_summary(text,date) to authenticated;
 
 create or replace function public.refresh_lifetime_financial_summary(p_shop_id text)
 returns void
 language plpgsql security definer set search_path=''
-as $
+as $$
 begin
   insert into public.lifetime_financial_summaries(shop_id,lifetime_sales,lifetime_purchases,lifetime_profit,updated_at)
   select p_shop_id,coalesce(sum(total_revenue),0),coalesce(sum(total_purchases+pre_stock_purchases),0),coalesce(sum(total_profit),0),now()
@@ -6193,7 +6193,7 @@ begin
     lifetime_profit=excluded.lifetime_profit,
     updated_at=now();
 end;
-$;
+$$;
 revoke all on function public.refresh_lifetime_financial_summary(text) from public,anon,authenticated;
 grant execute on function public.refresh_lifetime_financial_summary(text) to authenticated;
 
@@ -6256,7 +6256,7 @@ returns void
 language plpgsql
 security definer
 set search_path=''
-as $clear_all_v2$
+as $$clear_all_v2$
 declare
   v_table text;
   v_tables text[] := array[
