@@ -3956,6 +3956,8 @@ set mobile_normalized=case
   when regexp_replace(coalesce(mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}$' then right(regexp_replace(coalesce(mobile,''),'[^0-9]','','g'),10)
   else regexp_replace(coalesce(mobile,''),'[^0-9]','','g')
 end;
+
+create table if not exists public.debtor_ledger (
   id uuid primary key default gen_random_uuid(),
   shop_id text not null,
   debtor_id uuid not null references public.debtors(id) on delete cascade,
