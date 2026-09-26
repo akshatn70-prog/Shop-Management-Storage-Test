@@ -3886,7 +3886,6 @@ declare
   p public.products; src public.inventory_purchases; total numeric; v_id uuid; debtor uuid; v_shop text;
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
-  if trim(coalesce(p_reason,''))='' then raise exception 'Return reason is required'; end if;
   if p_quantity_base<=0 or p_return_price_per_base_unit<0 then raise exception 'Invalid return'; end if;
   if p_payment_mode not in ('cash','upi','credit_adjustment') then raise exception 'Invalid return payment mode'; end if;
   select * into p from public.products where id=p_product_id and is_active=true for update;
@@ -3934,7 +3933,6 @@ declare
   p public.products; src public.sales; total numeric; cost numeric; profit numeric; v_id uuid; creditor uuid; v_shop text;
 begin
   if not (select public.is_owner()) then raise exception 'Owner only'; end if;
-  if trim(coalesce(p_reason,''))='' then raise exception 'Return reason is required'; end if;
   if p_quantity_base<=0 or p_return_price_per_base_unit<0 then raise exception 'Invalid return'; end if;
   if p_payment_mode not in ('cash','upi','credit_adjustment') then raise exception 'Invalid return payment mode'; end if;
   select * into p from public.products where id=p_product_id and is_active=true for update;
