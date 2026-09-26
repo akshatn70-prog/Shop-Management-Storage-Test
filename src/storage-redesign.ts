@@ -575,9 +575,56 @@ function render(){
 }
 
 function login(msg=""){
- app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Storage Redesign Test</h2><p class="muted">Temporary test environment. Production app is untouched.</p>'+(msg?'<div class="notice danger">'+esc(msg)+'</div>':"")+'<button id="demoBtn" class="primary wide">🧪 Test Demo App</button><div class="divider">OR</div><form id="realLogin"><label>Supabase Project URL<input name="url" placeholder="https://xxxxx.supabase.co"></label><label>Publishable key<input name="key" placeholder="sb_publishable_..."></label><label>Email<input name="email" type="email"></label><label>Password<input name="password" type="password"></label><button class="ghost wide">Connect & Sign In</button></form><p class="tiny">Demo data is local only and will be removed before finalization.</p></div></div>';
- document.querySelector("#demoBtn")?.addEventListener("click",async()=>{initDemo();activeTab="dashboard";await loadData();render()});
- document.querySelector<HTMLFormElement>("#realLogin")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),url=String(fd.get("url")||"").trim(),key=String(fd.get("key")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");if(!url||!key||!email||!password)return notify("Fill all fields.","error");supabase=createClient(url,key);const r=await supabase.auth.signInWithPassword({email,password});if(r.error)return login(r.error.message);localStorage.setItem(URL_KEY,url);localStorage.setItem(KEY_KEY,key);const p=await supabase.from("profiles").select("*").eq("id",r.data.user.id).single();if(p.error)return login(p.error.message);profile={...p.data,role:p.data.role as Role} as Profile;if(!profile.is_active)return login("Your account is awaiting approval.");demo=false;demoReady=false;await loadData();render()});
- const c=readConn();if(c.url&&c.key){(document.querySelector('input[name="url"]') as HTMLInputElement).value=c.url;(document.querySelector('input[name="key"]') as HTMLInputElement).value=c.key}
+ app.innerHTML='<div class="login"><div class="login-card"><div class="brand big">SHOP MANAGEMENT</div><h2>Sign in to your shop</h2><p class="muted">Connect directly to your Supabase project. Render is not required.</p>'+(msg?'<div class="notice danger">'+esc(msg)+'</div>':"")+'<form id="realLogin"><label>Supabase Project URL <span class="tiny">(first time on this device)</span><input name="url" placeholder="https://xxxxx.supabase.co"></label><label>Publishable Key <span class="tiny">(first time on this device)</span><input name="key" placeholder="sb_publishable_..."></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Connect & Sign In</button></form><div class="divider">NEW ACCOUNT</div><form id="createAccount"><label>Full name<input name="name" autocomplete="name"></label><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" minlength="6" autocomplete="new-password" required></label><button class="ghost wide">Create Account</button></form><p class="tiny">Your Supabase URL and publishable key are saved on this device after a successful connection. On a new or reinstalled device, enter them once again.</p></div></div>';
+ const saved=readConn();
+ const urlEl=document.querySelector('input[name="url"]') as HTMLInputElement;
+ const keyEl=document.querySelector('input[name="key"]') as HTMLInputElement;
+ if(saved.url)urlEl.value=saved.url;
+ if(saved.key)keyEl.value=saved.key;
+
+ const getConnection=(form:HTMLFormElement)=>{
+  const fd=new FormData(form);
+  const url=String(fd.get("url")||"").trim()||saved.url;
+  const key=String(fd.get("key")||"").trim()||saved.key;
+  return {fd,url,key};
+ };
+ const ensureConnection=(url:string,key:string)=>{
+  if(!url||!key){notify("Enter the Supabase URL and publishable key on this device first.","error");return false}
+  supabase=createClient(url,key);
+  localStorage.setItem(URL_KEY,url);
+  localStorage.setItem(KEY_KEY,key);
+  return true;
+ };
+ const finishLogin=async(userId:string)=>{
+  const p=await supabase!.from("profiles").select("*").eq("id",userId).single();
+  if(p.error)return login(p.error.message);
+  profile={...p.data,role:p.data.role as Role} as Profile;
+  if(!profile.is_active)return login("This account is not active in the connected database.");
+  demo=false;demoReady=false;await loadData();render();
+ };
+
+ document.querySelector<HTMLFormElement>("#realLogin")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.currentTarget, {fd,url,key}=getConnection(f),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+  if(!ensureConnection(url,key)||!email||!password)return;
+  const r=await supabase!.auth.signInWithPassword({email,password});
+  if(r.error)return login(r.error.message);
+  await finishLogin(r.data.user.id);
+ });
+
+ document.querySelector<HTMLFormElement>("#createAccount")?.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.currentTarget, {fd,url,key}=getConnection(f),name=String(fd.get("name")||"").trim(),email=String(fd.get("email")||"").trim(),password=String(fd.get("password")||"");
+  if(!ensureConnection(url,key)||!email||!password)return;
+  const r=await supabase!.auth.signUp({email,password,options:{data:{full_name:name}}});
+  if(r.error)return notify(r.error.message,"error");
+  if(r.data.session&&r.data.user){
+   await finishLogin(r.data.user.id);
+   return;
+  }
+  notify("Account created. If this Supabase project requires email confirmation, disable email confirmation in Supabase Auth settings, then sign in here.","info");
+ });
+
 }
+
 connect();login();
