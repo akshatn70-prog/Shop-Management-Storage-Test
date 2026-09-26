@@ -1,11 +1,18 @@
 services:
   - type: web
     name: shop-management
-    runtime: static
+    runtime: node
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    startCommand: npm start
+    healthCheckPath: /health
     envVars:
-      - key: VITE_SUPABASE_URL
+      - key: SUPABASE_OAUTH_CLIENT_ID
         sync: false
-      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+      - key: SUPABASE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: SUPABASE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: OAUTH_TICKET_SECRET
+        sync: false
+      - key: APP_ORIGIN
         sync: false
