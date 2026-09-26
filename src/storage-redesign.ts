@@ -156,7 +156,7 @@ function shell(title:string){
 
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
- return '<section class="page"><div class="page-head"><div><h2>Dashboard</h2><p class="muted">Quick actions and stock overview.</p></div><button id="refresh" class="ghost">↻ Refresh</button></div><div class="metrics">'+m("Today Sales",money(s.sales))+m("Today Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Credit",money(s.credit))+'</div><div class="quick-grid"><button data-nav="sale">＋ Add Sale</button><button data-nav="cart">🛒 Cart</button><button data-nav="stock">Stock</button><button data-nav="creditors">Creditors</button></div><div class="panel"><div class="section-head"><h3>Stock</h3><span class="badge">'+products.length+' products</span></div><div class="table-wrap"><table><thead><tr><th>Product</th><th>Stock</th><th>Sell</th><th>Status</th></tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.selling_price_per_base_unit)+'</td><td>'+(Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)?'<span class="badge warn">LOW</span>':'<span class="badge ok">OK</span>')+'</td></tr>').join("")+'</tbody></table></div>'+(low.length?'<div class="notice warning">'+low.length+' product(s) are low in stock.</div>':"")+'</div></section>';
+ return '<section class="page"><div class="page-head"><div><h2>Dashboard</h2><p class="muted">Quick actions and stock overview.</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻ Refresh</button></div><div class="metrics">'+m("Today Sales",money(s.sales))+m("Today Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Credit",money(s.credit))+'</div><div class="quick-grid"><button data-nav="sale">＋ Add Sale</button><button data-nav="cart">🛒 Cart</button><button data-nav="stock">Stock</button><button data-nav="creditors">Creditors</button></div><div class="panel"><div class="section-head"><h3>Stock</h3><span class="badge">'+products.length+' products</span></div><div class="table-wrap"><table><thead><tr><th>Product</th><th>Stock</th><th>Sell</th><th>Status</th></tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.selling_price_per_base_unit)+'</td><td>'+(Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)?'<span class="badge warn">LOW</span>':'<span class="badge ok">OK</span>')+'</td></tr>').join("")+'</tbody></table></div>'+(low.length?'<div class="notice warning">'+low.length+' product(s) are low in stock.</div>':"")+'</div></section>';
 }
 
 function sale(){
@@ -638,7 +638,23 @@ function returnForm(type:"purchase"|"sale"){
 function bind(){
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{activeTab=x.dataset.nav||"dashboard";render()}));
  document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
- document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
+ const refreshBtn=document.querySelector<HTMLButtonElement>("#refresh");
+ if(refreshBtn){
+  const refresh=async(e?:Event)=>{
+   e?.preventDefault(); e?.stopPropagation();
+   if(refreshBtn.disabled)return;
+   refreshBtn.disabled=true;
+   refreshBtn.textContent="↻ Refreshing…";
+   try{await loadData();render();notify("Data refreshed.","success")}
+   catch(err){notify(errorMessage(err),"error")}
+   finally{
+    const b=document.querySelector<HTMLButtonElement>("#refresh");
+    if(b){b.disabled=false;b.textContent="↻ Refresh"}
+   }
+  };
+  refreshBtn.addEventListener("click",refresh,{passive:false});
+  refreshBtn.addEventListener("pointerup",refresh,{passive:false});
+ }
  if(activeTab==="sale")bindSale();
  if(activeTab==="cart")bindCart();
  if(activeTab==="debtors")bindDebtors();
