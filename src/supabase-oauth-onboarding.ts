@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 
-const RENDER_BASE="https://shop-management-storage-test.onrender.com";
+const RENDER_BASE="https://shop-management-oauth.onrender.com";
 const URL_KEY="shop_management_supabase_url";
 const KEY_KEY="shop_management_supabase_publishable_key";
 let busy=false;
