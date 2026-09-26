@@ -223,9 +223,9 @@ async function login(){
 
       // Move to the normal Supabase email/password login only after the
       // project connection has been verified. No Render request is made.
-      show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><div class="notice ok">✓ Supabase project connected</div><p class="muted">Now enter the Shop Owner email and password for this shop.</p><form id="directLogin"><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="changeConnection" class="ghost wide">Change Supabase Project</button><p class="tiny">This login goes directly to your Supabase project over Wi-Fi or mobile data. Render is not used.</p></div>');
+      show('<div class="brand big">SHOP MANAGEMENT</div><h2>Login</h2><div class="notice ok">✓ Supabase project connected</div><p class="muted">Now enter the Shop Owner email and password for this shop.</p><form id="directLogin"><label>Shop Owner Email<input name="email" type="email" autocomplete="email" required></label><label>Shop Owner Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary wide">Login</button></form><button id="changeConnection" class="ghost wide">Change Supabase Project</button><p class="tiny">This login goes directly to your Supabase project over Wi-Fi or mobile data. Render is not used.</p>');
 
-      document.querySelector("#changeConnection")?.addEventListener("click",()=>login());
+      document.querySelector("#changeConnection")?.addEventListener("click",()=>{busy=false;login()});
 
       document.querySelector<HTMLFormElement>("#directLogin")?.addEventListener("submit",async e=>{
         e.preventDefault();
