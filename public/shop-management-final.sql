@@ -4157,11 +4157,6 @@ revoke all on function public.clear_all_shop_data_v2() from public,anon;
 grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -4758,11 +4753,6 @@ $clear_all_v2$;
 revoke all on function public.clear_all_shop_data_v2() from public,anon;
 grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
-
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
 
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
@@ -5354,11 +5344,6 @@ revoke all on function public.clear_all_shop_data_v2() from public,anon;
 grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -5955,11 +5940,6 @@ $clear_all_v2$;
 revoke all on function public.clear_all_shop_data_v2() from public,anon;
 grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
-
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
 
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
