@@ -4124,11 +4124,6 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 select pg_notify('pgrst','reload schema');
 
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -4729,11 +4724,6 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 
 select pg_notify('pgrst','reload schema');
-
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
 
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
@@ -5329,11 +5319,6 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 select pg_notify('pgrst','reload schema');
 
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
-
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
 language plpgsql security definer set search_path=''
@@ -5934,11 +5919,6 @@ grant execute on function public.clear_all_shop_data_v2() to authenticated;
 
 
 select pg_notify('pgrst','reload schema');
-
-      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
-    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
-  end
-$$;
 
 create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
 returns public.debtors
