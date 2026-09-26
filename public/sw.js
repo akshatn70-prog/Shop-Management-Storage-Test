@@ -1,4 +1,4 @@
-const CACHE = "shop-management-v4";
+const CACHE = "shop-management-v5";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
