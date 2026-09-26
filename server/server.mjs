@@ -248,7 +248,7 @@ const server=http.createServer(async(req,res)=>{
             if(!ur.ok)throw new Error((ud?.msg||ud?.message||"Supabase could not confirm the owner email")+" (HTTP "+ur.status+")");
             return json(res,200,{ok:true,confirmed:true,existing:true});
           }
-          return json(res,409,{error:"OWNER_ALREADY_REGISTERED"});
+          return json(res,200,{ok:false,error:"OWNER_ALREADY_REGISTERED"});
         }
         const ur=await fetch("https://"+ref+".supabase.co/auth/v1/admin/users",{method:"POST",headers:{apikey:secret,Authorization:"Bearer "+secret,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({email,password,email_confirm:true,user_metadata:{full_name:name}})});
         const ud=await ur.json().catch(()=>({}));
