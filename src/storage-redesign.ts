@@ -14,6 +14,8 @@ let settings:any={shop_name:"My Shop",currency:"INR",timezone:"Asia/Kolkata",wor
 let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:AnyRow[]=[], ledger:AnyRow[]=[], debtors:AnyRow[]=[], debtorLedger:AnyRow[]=[], daily:AnyRow[]=[], auditRows:AnyRow[]=[], workersRows:Profile[]=[], lifetime:any={};
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
 let bottomNavScrollLeft=0;
+let realtimeChannel:any=null;
+let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
@@ -102,7 +104,7 @@ function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=
 function qBalance(id:string){return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
 function dBalance(id:string){return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
 function currentSales(){const today=businessDate();return sales.filter(s=>!s.voided&&businessDate(new Date(s.sold_at))===today)}
-function currentStats(){const a=currentSales(),today=businessDate(),r=returnsRows.filter(x=>x.return_type==="sale"&&businessDate(new Date(x.returned_at))===today);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales:a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash:a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc,upi:a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru,credit:a.reduce((x,y)=>x+Number(y.credit_amount||0),0)-rcr}}
+function currentStats(){const a=currentSales(),today=businessDate(),r=returnsRows.filter(x=>x.return_type==="sale"&&businessDate(new Date(x.returned_at))===today);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);const cash=a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc;const upi=a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru;const credit=a.reduce((x,y)=>x+(y.payment_mode==="credit"||y.payment_mode==="credit_split"?Math.max(0,Number(y.total_sale||0)-Number(y.cash_amount||0)-Number(y.upi_amount||0)):0),0)-rcr;const sales=a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr;return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash,upi,credit}}
 
 async function loadData(){
  if(demo){if(!demoReady)initDemo();return}
@@ -124,6 +126,25 @@ async function loadData(){
  ]);
  if(set.data)settings={...settings,...set.data};
  products=p.data||[];sales=s.data||[];purchases=q.data||[];creditors=c.data||[];ledger=l.data||[];debtors=db.data||[];debtorLedger=dl.data||[];daily=df.data||[];lifetime=life.data||{lifetime_sales:0,lifetime_purchases:0,lifetime_profit:0};auditRows=au.data||[];returnsRows=rr?.data||[];workersRows=(wr.data||[]).map((x:any)=>({...x,role:x.role as Role}));
+}
+
+async function setupRealtime(){
+ if(demo||!supabase||!profile)return;
+ if(realtimeChannel)await supabase.removeChannel(realtimeChannel);
+ if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}
+ const tables=["sales","inventory_purchases","debtor_ledger","returns","products","daily_financial_summaries","lifetime_financial_summaries"];
+ realtimeChannel=supabase.channel("shop-management-live-"+profile.id);
+ for(const table of tables){
+  realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},async()=>{
+   await loadData();
+   if(activeTab==="today"||activeTab==="reports"||activeTab==="dashboard")render();
+  });
+ }
+ realtimeChannel.subscribe();
+ realtimeRefreshTimer=window.setInterval(async()=>{
+  if(!profile||demo||!supabase)return;
+  if(activeTab==="today"||activeTab==="reports"){await loadData();render()}
+ },5000);
 }
 
 function shell(title:string){
@@ -290,7 +311,7 @@ function historyTable(){
  const start=historyRange==="7"?Date.now()-7*864e5:historyRange==="30"?Date.now()-30*864e5:0;
  const d=historyRange==="date"?historyDate:"";
  const rows=historyType==="sales"?sales.filter(s=>!s.voided&&(!start||new Date(s.sold_at).getTime()>=start)&&(!d||localDate(new Date(s.sold_at))===d)):purchases.filter(p=>!p.pre_stock&&(!start||new Date(p.purchased_at).getTime()>=start)&&(!d||localDate(new Date(p.purchased_at))===d));
- if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc(s.products?.name||s.product_name_snapshot)+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(s.credit_amount||((s.payment_mode==="credit")?s.total_sale:0))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
+ if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc(s.product_name_snapshot||s.products?.name||"Deleted product")+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(s.credit_amount||((s.payment_mode==="credit")?s.total_sale:0))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
  return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Cost</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Supplier</th><th></th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+fmt(p.purchased_at)+'</td><td>'+esc(p.product_name_snapshot)+'</td><td>'+p.quantity_display+' '+esc(p.purchase_unit||"")+'</td><td>'+money(p.total_cost)+'</td><td>'+money(p.cash_amount)+'</td><td>'+money(p.upi_amount)+'</td><td>'+money(Math.max(0,Number(p.credit_amount||0)-Number(p.credit_paid||0)))+'</td><td>'+esc(p.supplier_name||"")+'</td><td>'+(Number(p.credit_amount||0)-Number(p.credit_paid||0)>0.01?'<button class="smallbtn pay-purchase" data-id="'+p.id+'">Pay</button>':"")+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="9" class="muted">No retained purchase details.</td></tr>')+'</tbody></table>';
 }
 function history(){
@@ -615,7 +636,7 @@ function returnForm(type:"purchase"|"sale"){
 }
 function bind(){
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{activeTab=x.dataset.nav||"dashboard";render()}));
- document.querySelector("#logout")?.addEventListener("click",async()=>{if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
+ document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
  document.querySelector("#refresh")?.addEventListener("click",async()=>{await loadData();render()});
  if(activeTab==="sale")bindSale();
  if(activeTab==="cart")bindCart();
@@ -839,7 +860,7 @@ function login(msg=""){
   if(p.error)return renderAuthError(p.error.message);
   profile={...p.data,role:p.data.role as Role} as Profile;
   if(!profile.is_active)return renderAuthError("This account is not active in the connected database.");
-  demo=false;demoReady=false;await loadData();render();
+  demo=false;demoReady=false;await loadData();await setupRealtime();render();
  };
 
  if(msg){
