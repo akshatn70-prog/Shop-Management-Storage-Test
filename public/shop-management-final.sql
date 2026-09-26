@@ -4001,7 +4001,7 @@ insert into public.debtor_ledger(
   shop_id,debtor_id,purchase_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,notes,created_at
 )
 select
-  pr.shop_id,
+  pp.shop_id,
   pr.debtor_id,
   pr.id,
   'credit_purchase',
