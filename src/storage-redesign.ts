@@ -30,6 +30,12 @@ const downloadText=async(fileName:string,content:string)=>{
 const localDate=(d=new Date())=>new Intl.DateTimeFormat("en-CA",{timeZone:settings.timezone||"Asia/Kolkata",year:"numeric",month:"2-digit",day:"2-digit"}).format(d); const businessDate=(d=new Date())=>{const a=new Intl.DateTimeFormat("en-GB",{timeZone:settings.timezone||"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d),hh=Number(a.find(x=>x.type==="hour")?.value||0),mm=Number(a.find(x=>x.type==="minute")?.value||0),r=String(settings.dashboard_reset_time||"00:00").split(":").map(Number),x=(hh<r[0]||(hh===r[0]&&mm<r[1]))?new Date(d.getTime()-86400000):d;return localDate(x)};
 const fmt=(d:any)=>d?new Date(d).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):"";
 const notify=(m:string,t="info")=>{const x=document.createElement("div");x.className="toast "+t;x.textContent=m;document.body.appendChild(x);setTimeout(()=>x.remove(),2800)};
+const errorMessage=(err:any)=>{
+ const e=err?.error??err;
+ if(e?.message)return String(e.message)+(e?.details?" — "+String(e.details):"")+(e?.hint?" — "+String(e.hint):"");
+ if(typeof e==="string")return e;
+ try{return JSON.stringify(e)}catch{return String(e)}
+};
 const readConn=()=>({url:localStorage.getItem(URL_KEY)||"",key:localStorage.getItem(KEY_KEY)||""});
 const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return true}return false};
 const daysAgo=(n:number,h=12)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,15,0,0);return d.toISOString()};
@@ -245,6 +251,36 @@ function bindDebtors(){
 
 function creditorsView(){
  return '<section class="page"><div class="page-head"><div><h2>Creditors</h2><p class="muted">Customer credit balances and payments.</p></div><button id="newCreditor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="creditSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+creditors.map(c=>'<tr class="credit-row" data-q="'+esc((c.name+" "+c.mobile).toLowerCase())+'"><td>'+esc(c.name)+'</td><td>'+esc(c.mobile)+'</td><td class="'+(qBalance(c.id)>0?"negative":"positive")+'">'+money(qBalance(c.id))+'</td><td><button class="smallbtn pay-credit" data-id="'+c.id+'">Pay</button> <button class="smallbtn credit-history" data-id="'+c.id+'">History</button></td></tr>').join("")+'</tbody></table></div></div><div id="creditDetail"></div></section>';
+}
+function bindCreditors(){
+ document.querySelector("#creditSearch")?.addEventListener("input",e=>{const q=(e.target as HTMLInputElement).value.toLowerCase();document.querySelectorAll<HTMLElement>(".credit-row").forEach(x=>x.style.display=(x.dataset.q||"").includes(q)?"":"none")});
+ document.querySelector("#newCreditor")?.addEventListener("click",async()=>{
+  const n=prompt("Creditor name"),mbl=prompt("Mobile number");
+  if(!n?.trim()||!mbl?.trim())return;
+  try{await createCreditor(n.trim(),mbl.trim());await loadData();render();notify("Creditor registered.","success")}
+  catch(err){notify(errorMessage(err),"error")}
+ });
+ document.querySelectorAll<HTMLButtonElement>(".pay-credit").forEach(b=>b.addEventListener("click",async()=>{
+  const id=b.dataset.id!,bal=qBalance(id);
+  const amount=Number(prompt("Payment received. Outstanding: "+money(bal)));
+  if(!amount||amount<=0||amount>bal+0.01)return notify("Enter an amount up to the outstanding balance.","error");
+  const mode=(prompt("Payment mode: cash, upi, split","cash")||"cash").toLowerCase();
+  let cash=0,upi=0;
+  if(mode==="cash")cash=amount;
+  else if(mode==="upi")upi=amount;
+  else if(mode==="split"){cash=Number(prompt("Cash amount","0"));if(cash<0||cash>amount)return notify("Invalid cash amount.","error");upi=amount-cash}
+  else return notify("Invalid payment mode.","error");
+  try{
+   if(demo){creditors;ledger.unshift({id:"cpay-"+Date.now(),creditor_id:id,type:"payment_received",amount,payment_mode:mode,cash_amount:cash,upi_amount:upi,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}})}
+   else{const r=await supabase!.rpc("receive_credit_payment",{p_creditor_id:id,p_amount:amount,p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi});if(r.error)throw r.error}
+   await loadData();render();notify("Credit payment recorded.","success");
+  }catch(err){notify(errorMessage(err),"error")}
+ }));
+ document.querySelectorAll<HTMLButtonElement>(".credit-history").forEach(b=>b.addEventListener("click",()=>{
+  const id=b.dataset.id!,c=creditors.find(x=>x.id===id),rows=ledger.filter(x=>x.creditor_id===id);
+  document.querySelector("#creditDetail")!.innerHTML='<div class="panel"><div class="section-head"><h3>'+esc(c?.name)+' · '+money(qBalance(id))+' outstanding</h3><button id="closeCredit" class="ghost">Close</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cash</th><th>UPI</th><th>By</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.type)+'</td><td>'+money(x.amount)+'</td><td>'+money(x.cash_amount)+'</td><td>'+money(x.upi_amount)+'</td><td>'+esc(x.profiles?.full_name||"")+'</td></tr>').join("")+'</tbody></table></div></div>';
+  document.querySelector("#closeCredit")?.addEventListener("click",()=>document.querySelector("#creditDetail")!.innerHTML="");
+ }));
 }
 
 function historyTable(){
@@ -550,6 +586,7 @@ function bind(){
  if(activeTab==="sale")bindSale();
  if(activeTab==="cart")bindCart();
  if(activeTab==="debtors")bindDebtors();
+ if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history")bindHistory(); if(activeTab==="returns")bindReturns();
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
  if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm)}
