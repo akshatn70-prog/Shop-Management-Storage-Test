@@ -166,10 +166,12 @@ function productForm(){
    if(credit>0&&debtor)debtorLedger.unshift({id:"dpl"+Date.now(),debtor_id:debtor,type:"credit_purchase",amount:credit,payment_mode:"credit",cash_amount:0,upi_amount:0,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
    notify("Product added.","success");render();return
   }
-  const r=await supabase!.from("products").insert({name,unit_type:unit,current_stock_base:0,purchase_price_per_base_unit:0,selling_price_per_base_unit:sell,low_stock_threshold_base:low,is_active:true}).select().single();
+  const r=await supabase!.from("products").insert({name,unit_type:unit,current_stock_base:0,purchase_price_per_base_unit:buy,selling_price_per_base_unit:sell,low_stock_threshold_base:low,is_active:true}).select().single();
   if(r.error)return notify(r.error.message,"error");
-  const purchase=await supabase!.rpc("add_inventory_purchase",{p_product_id:r.data.id,p_quantity_base:q,p_quantity_display:q,p_purchase_unit:unit==="weight"?"grams":"piece",p_purchase_price:buy,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
-  if(purchase.error){await supabase!.from("products").delete().eq("id",r.data.id);return notify(purchase.error.message,"error")}
+  if(q>0){
+   const purchase=await supabase!.rpc("add_inventory_purchase",{p_product_id:r.data.id,p_quantity_base:q,p_quantity_display:q,p_purchase_unit:unit==="weight"?"grams":"piece",p_purchase_price:buy,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
+   if(purchase.error){await supabase!.from("products").delete().eq("id",r.data.id);return notify(purchase.error.message,"error")}
+  }
   await loadData();render()
  });
 }
