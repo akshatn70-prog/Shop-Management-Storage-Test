@@ -85,7 +85,22 @@ async function getPublishableKey(ref,token){
   if(!key)throw new Error("No publishable API key is available for this Supabase project.");
   return key;
 }
-async function createProject(token,{organization_id,name,region}){  const dbPass=random(24)+"A1!";  return await supa("/v1/projects",token,{method:"POST",body:JSON.stringify({organization_id,name,region,db_pass:dbPass})});}async function waitProject(ref,token){  for(let i=0;i<60;i++){    const p=await supa("/v1/projects/"+encodeURIComponent(ref),token);    if(String(p?.status||"").toUpperCase()==="ACTIVE" || String(p?.status||"").toUpperCase()==="HEALTHY")return p;    await new Promise(r=>setTimeout(r,5000));  }  throw new Error("Supabase project is still starting. Please wait a few minutes and try again.");}function cleanup(){
+async function createProject(token,{organization_id,name,region}){  const dbPass=random(24)+"A1!";  return await supa("/v1/projects",token,{method:"POST",body:JSON.stringify({organization_id,name,region,db_pass:dbPass})});}
+async function waitProject(ref,token){
+  for(let i=0;i<60;i++){
+    const p=await supa("/v1/projects/"+encodeURIComponent(ref),token);
+    const status=String(p?.status||"").toUpperCase();
+    if(status==="ACTIVE_HEALTHY" || status==="ACTIVE" || status==="HEALTHY")return p;
+    try{
+      const h=await supa("/v1/projects/"+encodeURIComponent(ref)+"/health",token);
+      const services=Array.isArray(h)?h:(h?.services||h?.data||[]);
+      const allHealthy=Array.isArray(services) && services.length>0 && services.every(x=>String(x?.status||"").toUpperCase()==="ACTIVE_HEALTHY");
+      if(allHealthy)return p;
+    }catch{}
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  throw new Error("Supabase project is still starting. Please wait a few minutes and try again.");
+}function cleanup(){
   const now=Date.now();
   for(const [id,s] of sessions)if(now-s.createdAt>15*60*1000)sessions.delete(id);
 }
