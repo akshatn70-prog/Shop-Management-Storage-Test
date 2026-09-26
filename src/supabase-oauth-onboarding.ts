@@ -258,14 +258,11 @@ async function start(){
 }
 
 function renderGate(){
-  const c=localConnection();
-  if(c.url&&c.key){
-    login();
-  }else{
-    show('<div class="brand big">SHOP MANAGEMENT</div><h2>Welcome</h2><p class="muted">Connect your Supabase account once. After registration, everyday login works directly through Supabase.</p><button id="registerNow" class="primary wide">Register / Connect Supabase</button><button id="loginNow" class="ghost wide">Login</button><p class="tiny">Login needs a saved Supabase connection. On a new install/device, register/connect once again.</p>');
-    document.querySelector("#registerNow")?.addEventListener("click",register);
-    document.querySelector("#loginNow")?.addEventListener("click",login);
-  }
+  // Keep the entry screen unchanged in purpose: Register remains the existing
+  // registration flow, while URL/key are requested only after Login is tapped.
+  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Welcome</h2><p class="muted">Connect your Supabase account once. After registration, everyday login works directly through Supabase.</p><button id="registerNow" class="primary wide">Register / Connect Supabase</button><button id="loginNow" class="ghost wide">Login</button><p class="tiny">Tap Login to connect an existing shop. On a new install/device, enter that shop\'s Supabase URL and publishable key, then sign in.</p>');
+  document.querySelector("#registerNow")?.addEventListener("click",register);
+  document.querySelector("#loginNow")?.addEventListener("click",login);
 }
 function shouldTakeOver(){
   const card=document.querySelector(".login-card");
