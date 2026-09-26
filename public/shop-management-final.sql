@@ -1267,9 +1267,8 @@ grant execute on function public.initialize_shop(text) to anon, authenticated;
 -- New accounts:
 -- first account in this project = owner
 -- later accounts = workers
--- all accounts start inactive
--- owner becomes active after email verification
--- workers require owner approval
+-- accounts are active immediately for the personal/direct-login app flow
+-- no owner approval is required
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -1313,7 +1312,7 @@ begin
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
     coalesce(new.email, ''),
     v_role,
-    false,
+    true,
     v_shop_id
   )
   on conflict (id) do update
@@ -2391,6 +2390,27 @@ begin
     perform set_config('shop.allow_stock_change','off',true);
   end loop;
 
+  -- Reconcile per-line payment rounding for split and credit-split carts.
+  -- The final line absorbs any cent remainder so line totals exactly match
+  -- the transaction-level cash/UPI amounts.
+  if actual_payment_mode in ('split','credit_split') then
+    update public.sales s
+    set cash_amount=round(greatest(0,cash_paid-coalesce((
+          select sum(s2.cash_amount) from public.sales s2
+          where s2.transaction_id=v_tx_id and s2.id<>s.id
+        ),0)),2),
+        upi_amount=round(greatest(0,upi_paid-coalesce((
+          select sum(s2.upi_amount) from public.sales s2
+          where s2.transaction_id=v_tx_id and s2.id<>s.id
+        ),0)),2)
+    where s.id=(
+      select s3.id from public.sales s3
+      where s3.transaction_id=v_tx_id
+      order by s3.id desc
+      limit 1
+    );
+  end if;
+
   if actual_payment_mode in ('credit','credit_split') then
     insert into public.credit_ledger(
       shop_id,creditor_id,sale_transaction_id,sale_id,type,amount,
@@ -2633,8 +2653,6 @@ grant execute on function public.verify_cart_credit_schema() to authenticated;
 
 
 -- ============================================================
--- STORAGE-EFFICIENT REDESIGN FINAL RETENTION LAYER
--- ============================================================
 -- SHOP MANAGEMENT STORAGE-EFFICIENT REDESIGN
 -- Run after the existing FINAL_ALL_IN_ONE.sql on the test Supabase project.
 -- This migration implements the retention rules from the Storage-Efficient App & Database Blueprint.
@@ -2736,6 +2754,8 @@ create table if not exists public.creditor_daily_financial_aggregates (
 create index if not exists creditor_daily_aggregate_shop_date_idx
   on public.creditor_daily_financial_aggregates(shop_id,business_date desc);
 
+alter table public.daily_financial_summaries add column if not exists pre_stock_purchases numeric(14,2) not null default 0;
+
 -- ============================================================
 -- 3. Refresh one day's permanent aggregate
 -- ============================================================
@@ -2759,7 +2779,7 @@ begin
   insert into public.daily_financial_summaries(
     shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
     total_profit,cash_profit,upi_profit,credit_profit,creditor_amount,
-    purchase_cash,purchase_upi,purchase_credit,total_purchases,updated_at
+    purchase_cash,purchase_upi,purchase_credit,total_purchases,pre_stock_purchases,updated_at
   )
   select
     p_shop_id,
@@ -2778,6 +2798,7 @@ begin
     coalesce(p.upi_purchase,0),
     coalesce(p.credit_purchase,0),
     coalesce(p.total_purchase,0),
+    coalesce(p.pre_stock_purchase,0),
     now()
   from
     (select 1) seed
@@ -2810,11 +2831,11 @@ begin
         coalesce(sum(case when i.payment_mode='cash' then i.total_cost else 0 end),0)::numeric as cash_purchase,
         coalesce(sum(case when i.payment_mode='upi' then i.total_cost else 0 end),0)::numeric as upi_purchase,
         coalesce(sum(case when i.payment_mode='credit' then i.total_cost else 0 end),0)::numeric as credit_purchase,
-        coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric as total_purchase
+        coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric as total_purchase,
+        coalesce(sum(case when coalesce(i.pre_stock,false)=true then i.total_cost else 0 end),0)::numeric as pre_stock_purchase
       from public.inventory_purchases i
       join public.profiles w on w.id=i.purchased_by
       where w.shop_id=p_shop_id
-        and coalesce(i.pre_stock,false)=false
         and (i.purchased_at at time zone v_tz)::date=p_business_date
     ) p on true
   on conflict(shop_id,business_date) do update set
@@ -2832,6 +2853,7 @@ begin
     purchase_upi=excluded.purchase_upi,
     purchase_credit=excluded.purchase_credit,
     total_purchases=excluded.total_purchases,
+    pre_stock_purchases=excluded.pre_stock_purchases,
     updated_at=now();
 end;
 $$;
@@ -2851,7 +2873,7 @@ begin
   select
     p_shop_id,
     coalesce(sum(total_revenue),0),
-    coalesce(sum(total_purchases),0),
+    coalesce(sum(total_purchases+pre_stock_purchases),0),
     coalesce(sum(total_profit),0),
     now()
   from public.daily_financial_summaries
@@ -2931,7 +2953,7 @@ begin
     from public.inventory_purchases i
     join public.profiles w on w.id=i.purchased_by
     cross join public.shop_settings st
-    where w.shop_id is not null and coalesce(i.pre_stock,false)=false
+    where w.shop_id is not null
   loop
     perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
   end loop;
@@ -3216,7 +3238,10 @@ end;
 $$;
 
 revoke all on function public.verify_shop_management(text) from public;
-grant execute on function public.verify_shop_management(text) to authenticated;
+-- Anonymous access is intentionally limited to the setup/installation check.
+-- The function only reports whether the required Shop Management schema exists;
+-- all actual application data remains protected by authentication and RLS.
+grant execute on function public.verify_shop_management(text) to anon, authenticated;
 
 create or replace function public.clear_all_shop_data()
 returns void
@@ -3234,7 +3259,9 @@ begin
   delete from public.daily_financial_summaries;
   delete from public.lifetime_financial_summaries;
   delete from public.creditor_daily_financial_aggregates;
+  perform set_config('shop.allow_stock_change','on',true);
   update public.products set current_stock_base=0,updated_at=now();
+  perform set_config('shop.allow_stock_change','off',true);
   insert into public.audit_logs(actor_id,action,entity_type,details)
   values((select auth.uid()),'clear_all','shop','{}'::jsonb);
 end;
@@ -3304,3 +3331,810 @@ end;
 $$;
 
 select pg_notify('pgrst','reload schema');
+
+
+-- ============================================================
+-- DEBTOR + REPORT + AUDIT DATE MIGRATION
+-- ============================================================
+-- Credit purchases are owed to debtors (suppliers). Debtor detail is
+-- transactional; daily financial columns remain permanent compact aggregates.
+
+create table if not exists public.debtors (
+  id uuid primary key default gen_random_uuid(),
+  shop_id text not null,
+  name text not null,
+  mobile text not null,
+  mobile_normalized text not null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists debtors_shop_mobile_uidx
+  on public.debtors(shop_id,mobile_normalized)
+  where is_active=true and mobile_normalized<>'';
+create index if not exists debtors_shop_name_idx on public.debtors(shop_id,lower(name));
+
+alter table public.inventory_purchases
+  add column if not exists debtor_id uuid references public.debtors(id) on delete set null;
+
+alter table public.daily_financial_summaries
+  add column if not exists debtor_payment_cash numeric(14,2) not null default 0,
+  add column if not exists debtor_payment_upi numeric(14,2) not null default 0,
+  add column if not exists debtor_payment_total numeric(14,2) not null default 0;
+
+create table if not exists public.debtor_ledger (
+  id uuid primary key default gen_random_uuid(),
+  shop_id text not null,
+  debtor_id uuid not null references public.debtors(id) on delete cascade,
+  purchase_id uuid references public.inventory_purchases(id) on delete set null,
+  type text not null check (type in ('credit_purchase','payment_made','adjustment')),
+  amount numeric(14,2) not null check (amount>0),
+  payment_mode text,
+  cash_amount numeric(14,2) not null default 0,
+  upi_amount numeric(14,2) not null default 0,
+  worker_id uuid not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  notes text
+);
+
+create index if not exists debtor_ledger_debtor_created_idx on public.debtor_ledger(debtor_id,created_at desc);
+create index if not exists debtor_ledger_shop_created_idx on public.debtor_ledger(shop_id,created_at desc);
+create index if not exists debtor_ledger_purchase_idx on public.debtor_ledger(purchase_id);
+
+create or replace function public.normalize_debtor_mobile(p_mobile text)
+returns text
+language sql immutable set search_path=''
+as $$
+  select case
+    when regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g') ~ '^91[0-9]{10}$'
+      then right(regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g'),10)
+    else regexp_replace(coalesce(p_mobile,''),'[^0-9]','','g')
+  end
+$$;
+
+revoke all on function public.normalize_debtor_mobile(text) from public,anon,authenticated;
+
+create or replace function public.get_or_create_debtor(p_name text,p_mobile text)
+returns public.debtors
+language plpgsql security definer set search_path=''
+as $$
+declare
+  v_shop text;
+  v_mobile text;
+  r public.debtors;
+begin
+  if not (select public.is_active_user()) then raise exception 'Account is inactive'; end if;
+  v_shop=(select shop_id from public.profiles where id=(select auth.uid()));
+  v_mobile=public.normalize_debtor_mobile(p_mobile);
+  if v_shop is null or btrim(v_shop)='' then raise exception 'Shop ID is not configured'; end if;
+  if btrim(coalesce(p_name,''))='' then raise exception 'Debtor name is required'; end if;
+  if length(v_mobile)<10 then raise exception 'Enter a valid mobile number'; end if;
+  insert into public.debtors(shop_id,name,mobile,mobile_normalized)
+  values(v_shop,btrim(p_name),btrim(p_mobile),v_mobile)
+  on conflict(shop_id,mobile_normalized) where is_active=true and mobile_normalized<>''
+  do update set name=excluded.name,mobile=excluded.mobile,updated_at=now()
+  returning * into r;
+  return r;
+end;
+$$;
+
+revoke all on function public.get_or_create_debtor(text,text) from public,anon;
+grant execute on function public.get_or_create_debtor(text,text) to authenticated;
+
+create or replace function public.debtor_balance(p_debtor_id uuid)
+returns numeric
+language sql stable security definer set search_path=''
+as $$
+  select coalesce(sum(
+    case
+      when type='credit_purchase' then amount
+      when type='payment_made' then -amount
+      else amount
+    end
+  ),0)::numeric(14,2)
+  from public.debtor_ledger
+  where debtor_id=p_debtor_id
+    and shop_id=(select shop_id from public.profiles where id=(select auth.uid()))
+$$;
+
+revoke all on function public.debtor_balance(uuid) from public,anon;
+grant execute on function public.debtor_balance(uuid) to authenticated;
+
+create or replace function public.debtor_purchase_ledger_trigger()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+begin
+  -- Purchase-detail deletion is only allowed by retention after the debt is paid,
+  -- so keep the permanent debtor accounting entry instead of creating a negative balance.
+  if tg_op='UPDATE' then
+    delete from public.debtor_ledger
+    where purchase_id=old.id and type='credit_purchase';
+  end if;
+  if tg_op in ('INSERT','UPDATE') then
+    if new.debtor_id is not null and coalesce(new.credit_amount,0)>0 and coalesce(new.pre_stock,false)=false then
+      insert into public.debtor_ledger(
+        shop_id,debtor_id,purchase_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,created_at,notes
+      )
+      values(
+        (select shop_id from public.profiles where id=new.purchased_by),
+        new.debtor_id,new.id,'credit_purchase',new.credit_amount,'credit',0,0,new.purchased_by,new.purchased_at,
+        'Credit purchase '||new.id::text
+      );
+    end if;
+  end if;
+  return coalesce(new,old);
+end;
+$$;
+
+revoke all on function public.debtor_purchase_ledger_trigger() from public,anon,authenticated;
+drop trigger if exists debtor_purchase_ledger_trigger on public.inventory_purchases;
+create trigger debtor_purchase_ledger_trigger
+after insert or update or delete on public.inventory_purchases
+for each row execute function public.debtor_purchase_ledger_trigger();
+
+create or replace function public.pay_debtor(
+  p_debtor_id uuid,
+  p_amount numeric,
+  p_payment_mode text,
+  p_cash_amount numeric default 0,
+  p_upi_amount numeric default 0
+)
+returns jsonb
+language plpgsql security definer set search_path=''
+as $$
+declare
+  v_shop text;
+  v_balance numeric;
+  v_cash numeric:=coalesce(p_cash_amount,0);
+  v_upi numeric:=coalesce(p_upi_amount,0);
+  v_remaining numeric;
+  r record;
+  v_take numeric;
+begin
+  if not (select public.is_active_user()) then raise exception 'Account is inactive'; end if;
+  v_shop=(select shop_id from public.profiles where id=(select auth.uid()));
+  if p_amount<=0 then raise exception 'Payment amount must be positive'; end if;
+  if p_payment_mode not in ('cash','upi','split') then raise exception 'Invalid payment mode'; end if;
+  if abs((v_cash+v_upi)-p_amount)>.01 then raise exception 'Cash + UPI must equal payment amount'; end if;
+  select coalesce(sum(case when type='credit_purchase' then amount when type='payment_made' then -amount else amount end),0)
+    into v_balance
+  from public.debtor_ledger
+  where debtor_id=p_debtor_id and shop_id=v_shop;
+  if p_amount>v_balance+.01 then raise exception 'Payment exceeds debtor balance'; end if;
+
+  insert into public.debtor_ledger(
+    shop_id,debtor_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,created_at,notes
+  ) values(
+    v_shop,p_debtor_id,'payment_made',round(p_amount,2),p_payment_mode,round(v_cash,2),round(v_upi,2),
+    (select auth.uid()),now(),'Debtor payment'
+  );
+
+  v_remaining=p_amount;
+  for r in
+    select id,credit_amount,credit_paid
+    from public.inventory_purchases
+    where debtor_id=p_debtor_id
+      and purchased_by in (select id from public.profiles where shop_id=v_shop)
+      and coalesce(pre_stock,false)=false
+      and (credit_amount-credit_paid)>0.01
+    order by purchased_at,id
+    for update
+  loop
+    exit when v_remaining<=.01;
+    v_take=least(v_remaining,r.credit_amount-r.credit_paid);
+    update public.inventory_purchases
+    set credit_paid=credit_paid+v_take
+    where id=r.id;
+    v_remaining=v_remaining-v_take;
+  end loop;
+
+  perform public.refresh_daily_financial_summary(v_shop,(now() at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date);
+  return jsonb_build_object('ok',true,'balance_after',round(v_balance-p_amount,2));
+end;
+$$;
+
+revoke all on function public.pay_debtor(uuid,numeric,text,numeric,numeric) from public,anon;
+grant execute on function public.pay_debtor(uuid,numeric,text,numeric,numeric) to authenticated;
+
+-- Permanent daily report refresh: sales + profits, purchases, and debtor payments.
+create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
+returns void
+language plpgsql security definer set search_path=''
+as $$
+declare
+  v_tz text;
+begin
+  select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
+  insert into public.daily_financial_summaries(
+    shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
+    total_profit,cash_profit,upi_profit,credit_profit,creditor_amount,
+    purchase_cash,purchase_upi,purchase_credit,total_purchases,pre_stock_purchases,
+    debtor_payment_cash,debtor_payment_upi,debtor_payment_total,updated_at
+  )
+  select
+    p_shop_id,p_business_date,
+    coalesce(s.tx_count,0),coalesce(s.revenue,0),coalesce(s.cash,0),coalesce(s.upi,0),coalesce(s.credit,0),
+    coalesce(s.profit,0),coalesce(s.cash_profit,0),coalesce(s.upi_profit,0),coalesce(s.credit_profit,0),
+    coalesce(s.credit,0),
+    coalesce(p.cash_purchase,0),coalesce(p.upi_purchase,0),coalesce(p.credit_purchase,0),
+    coalesce(p.total_purchase,0),coalesce(p.pre_stock_purchase,0),
+    coalesce(d.payment_cash,0),coalesce(d.payment_upi,0),coalesce(d.payment_total,0),now()
+  from
+    (select
+       count(distinct s.transaction_id) filter(where s.transaction_id is not null)
+         + count(*) filter(where s.transaction_id is null) as tx_count,
+       coalesce(sum(s.total_sale) filter(where not s.voided),0) as revenue,
+       coalesce(sum(s.cash_amount) filter(where not s.voided),0) as cash,
+       coalesce(sum(s.upi_amount) filter(where not s.voided),0) as upi,
+       coalesce(sum(case when s.payment_mode in ('credit','credit_split') then
+           greatest(0,s.total_sale-s.cash_amount-s.upi_amount) else 0 end) filter(where not s.voided),0) as credit,
+       coalesce(sum(s.gross_profit) filter(where not s.voided),0) as profit,
+       coalesce(sum(case when s.cash_amount>0 then s.gross_profit*(s.cash_amount/nullif(s.total_sale,0)) else 0 end) filter(where not s.voided),0) as cash_profit,
+       coalesce(sum(case when s.upi_amount>0 then s.gross_profit*(s.upi_amount/nullif(s.total_sale,0)) else 0 end) filter(where not s.voided),0) as upi_profit,
+       coalesce(sum(case when s.payment_mode in ('credit','credit_split') then s.gross_profit*(greatest(0,s.total_sale-s.cash_amount-s.upi_amount)/nullif(s.total_sale,0)) else 0 end) filter(where not s.voided),0) as credit_profit
+     from public.sales s
+     join public.profiles w on w.id=s.worker_id
+     where w.shop_id=p_shop_id and (s.sold_at at time zone v_tz)::date=p_business_date) s
+  cross join
+    (select
+       coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode='cash' then i.total_cost else 0 end),0) as cash_purchase,
+       coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode='upi' then i.total_cost else 0 end),0) as upi_purchase,
+       coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode='credit' then i.total_cost else 0 end),0) as credit_purchase,
+       coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode in ('cash','upi','credit','split') then i.total_cost else 0 end),0) as total_purchase,
+       coalesce(sum(case when coalesce(i.pre_stock,false)=true then i.total_cost else 0 end),0) as pre_stock_purchase
+     from public.inventory_purchases i
+     join public.profiles w on w.id=i.purchased_by
+     where w.shop_id=p_shop_id and (i.purchased_at at time zone v_tz)::date=p_business_date) p
+  cross join
+    (select
+       coalesce(sum(case when type='payment_made' then cash_amount else 0 end),0) as payment_cash,
+       coalesce(sum(case when type='payment_made' then upi_amount else 0 end),0) as payment_upi,
+       coalesce(sum(case when type='payment_made' then amount else 0 end),0) as payment_total
+     from public.debtor_ledger d
+     where d.shop_id=p_shop_id and (d.created_at at time zone v_tz)::date=p_business_date) d
+  on conflict(shop_id,business_date) do update set
+    total_transactions=excluded.total_transactions,total_revenue=excluded.total_revenue,
+    cash_sales=excluded.cash_sales,upi_sales=excluded.upi_sales,credit_sales=excluded.credit_sales,
+    total_profit=excluded.total_profit,cash_profit=excluded.cash_profit,upi_profit=excluded.upi_profit,
+    credit_profit=excluded.credit_profit,creditor_amount=excluded.creditor_amount,
+    purchase_cash=excluded.purchase_cash,purchase_upi=excluded.purchase_upi,purchase_credit=excluded.purchase_credit,
+    total_purchases=excluded.total_purchases,pre_stock_purchases=excluded.pre_stock_purchases,
+    debtor_payment_cash=excluded.debtor_payment_cash,debtor_payment_upi=excluded.debtor_payment_upi,
+    debtor_payment_total=excluded.debtor_payment_total,updated_at=now();
+end;
+$$;
+
+revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
+
+-- Backfill debtor-payment dates and all dates represented by debtors.
+do $$
+declare r record;
+begin
+  for r in
+    select distinct d.shop_id,(d.created_at at time zone coalesce(st.timezone,'Asia/Kolkata'))::date business_date
+    from public.debtor_ledger d cross join public.shop_settings st
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+end;
+$$;
+
+create or replace function public.debtor_ledger_aggregate_trigger()
+returns trigger language plpgsql security definer set search_path=''
+as $$
+declare v_shop text; v_tz text;
+begin
+  v_shop=coalesce(new.shop_id,old.shop_id);
+  select coalesce(timezone,'Asia/Kolkata') into v_tz from public.shop_settings where id=1;
+  if old is not null then perform public.refresh_daily_financial_summary(v_shop,(old.created_at at time zone v_tz)::date); end if;
+  if new is not null then perform public.refresh_daily_financial_summary(v_shop,(new.created_at at time zone v_tz)::date); end if;
+  return coalesce(new,old);
+end;
+$$;
+revoke all on function public.debtor_ledger_aggregate_trigger() from public,anon,authenticated;
+drop trigger if exists debtor_ledger_aggregate_trigger on public.debtor_ledger;
+create trigger debtor_ledger_aggregate_trigger
+after insert or update or delete on public.debtor_ledger
+for each row execute function public.debtor_ledger_aggregate_trigger();
+
+-- Debtor detail cleanup mirrors customer-credit behavior:
+-- keep details while outstanding; after balance reaches zero keep 7 days.
+create or replace function public.cleanup_paid_debtor_detail()
+returns void language plpgsql security definer set search_path=''
+as $$
+declare r record;
+begin
+  for r in
+    select d.id,d.shop_id
+    from public.debtors d
+    where not exists(
+      select 1 from public.debtor_ledger l
+      where l.debtor_id=d.id and l.shop_id=d.shop_id
+      group by l.debtor_id
+      having coalesce(sum(case when l.type='credit_purchase' then l.amount when l.type='payment_made' then -l.amount else l.amount end),0)>0.01
+    )
+  loop
+    delete from public.debtor_ledger
+    where debtor_id=r.id and shop_id=r.shop_id and created_at<now()-interval '7 days';
+  end loop;
+end;
+$$;
+revoke all on function public.cleanup_paid_debtor_detail() from public,anon,authenticated;
+
+create or replace function public.delete_audit_for_date(p_business_date date)
+returns integer
+language plpgsql security definer set search_path=''
+as $$
+declare v_count integer;
+begin
+  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
+  delete from public.audit_logs
+  where (created_at at time zone coalesce((select timezone from public.shop_settings where id=1),'Asia/Kolkata'))::date=p_business_date;
+  get diagnostics v_count=row_count;
+  return v_count;
+end;
+$$;
+revoke all on function public.delete_audit_for_date(date) from public,anon;
+grant execute on function public.delete_audit_for_date(date) to authenticated;
+
+-- Secure the new exposed debtor objects.
+alter table public.debtors enable row level security;
+alter table public.debtor_ledger enable row level security;
+revoke all on table public.debtors from anon,authenticated;
+revoke all on table public.debtor_ledger from anon,authenticated;
+grant select on table public.debtors to authenticated;
+grant select on table public.debtor_ledger to authenticated;
+
+drop policy if exists "debtors same shop read" on public.debtors;
+create policy "debtors same shop read" on public.debtors
+for select to authenticated
+using ((select public.is_active_user()) and shop_id=(select shop_id from public.profiles where id=(select auth.uid())));
+
+drop policy if exists "debtor ledger same shop read" on public.debtor_ledger;
+create policy "debtor ledger same shop read" on public.debtor_ledger
+for select to authenticated
+using ((select public.is_active_user()) and shop_id=(select shop_id from public.profiles where id=(select auth.uid())));
+
+-- Direct client writes are not needed for debtor ledger; RPCs/triggers own them.
+revoke insert,update,delete on table public.debtor_ledger from authenticated;
+
+-- Include debtor detail in the existing shop-data clear operation.
+create or replace function public.clear_all_shop_data()
+returns void
+language plpgsql security definer set search_path=''
+as $$
+begin
+  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
+  delete from public.debtor_ledger;
+  delete from public.credit_ledger;
+  delete from public.sales;
+  delete from public.sale_transactions;
+  delete from public.inventory_purchases;
+  delete from public.audit_logs;
+  delete from public.daily_financial_summaries;
+  delete from public.lifetime_financial_summaries;
+  delete from public.creditor_daily_financial_aggregates;
+  update public.products set current_stock_base=0,updated_at=now();
+end;
+$$;
+revoke all on function public.clear_all_shop_data() from public,anon;
+grant execute on function public.clear_all_shop_data() to authenticated;
+
+select pg_notify('pgrst','reload schema');
+
+-- ============================================================
+-- PATCH: atomic purchase + returns + business-day consistency
+-- ============================================================
+alter table public.inventory_purchases
+  add column if not exists payment_mode text not null default 'cash',
+  add column if not exists cash_amount numeric(14,2) not null default 0,
+  add column if not exists upi_amount numeric(14,2) not null default 0,
+  add column if not exists credit_amount numeric(14,2) not null default 0,
+  add column if not exists credit_paid numeric(14,2) not null default 0,
+  add column if not exists pre_stock boolean not null default false,
+  add column if not exists supplier_name text,
+  add column if not exists debtor_id uuid references public.debtors(id) on delete set null;
+
+create table if not exists public.returns (
+  id uuid primary key default gen_random_uuid(),
+  shop_id text not null,
+  return_type text not null check (return_type in ('sale','purchase')),
+  product_id uuid references public.products(id) on delete set null,
+  product_name_snapshot text not null default 'Deleted product',
+  quantity_base numeric(14,3) not null check (quantity_base > 0),
+  quantity_display numeric(14,3) not null check (quantity_display > 0),
+  return_unit text not null,
+  return_price_per_base_unit numeric(12,2) not null check (return_price_per_base_unit >= 0),
+  total_amount numeric(14,2) not null check (total_amount >= 0),
+  cost_amount numeric(14,2) not null default 0 check (cost_amount >= 0),
+  profit_impact numeric(14,2) not null default 0,
+  payment_mode text not null check (payment_mode in ('cash','upi','credit_adjustment')),
+  cash_amount numeric(14,2) not null default 0 check (cash_amount >= 0),
+  upi_amount numeric(14,2) not null default 0 check (upi_amount >= 0),
+  credit_amount numeric(14,2) not null default 0 check (credit_amount >= 0),
+  source_id uuid,
+  creditor_id uuid references public.creditors(id) on delete set null,
+  debtor_id uuid references public.debtors(id) on delete set null,
+  reason text not null,
+  returned_by uuid not null references public.profiles(id),
+  returned_at timestamptz not null default now()
+);
+create index if not exists returns_shop_date_idx on public.returns(shop_id,returned_at desc);
+create index if not exists returns_product_idx on public.returns(product_id);
+create index if not exists returns_type_idx on public.returns(return_type);
+
+alter table public.daily_financial_summaries
+  add column if not exists sales_returns numeric(14,2) not null default 0,
+  add column if not exists purchase_returns numeric(14,2) not null default 0,
+  add column if not exists sales_return_profit_impact numeric(14,2) not null default 0;
+
+create or replace function public.business_date(p_ts timestamptz default now())
+returns date
+language plpgsql stable security definer set search_path=''
+as $$
+declare
+  tz text;
+  reset_text text;
+  local_ts timestamp;
+  reset_minutes integer;
+begin
+  select coalesce(timezone,'Asia/Kolkata'),coalesce(dashboard_reset_time,'00:00')
+    into tz,reset_text from public.shop_settings where id=1;
+  local_ts := p_ts at time zone tz;
+  reset_minutes := split_part(reset_text,':',1)::integer*60 + split_part(reset_text,':',2)::integer;
+  if extract(hour from local_ts)*60 + extract(minute from local_ts) < reset_minutes then
+    return (local_ts::date - 1);
+  end if;
+  return local_ts::date;
+end;
+$$;
+revoke all on function public.business_date(timestamptz) from public,anon,authenticated;
+grant execute on function public.business_date(timestamptz) to authenticated;
+
+create or replace function public.add_inventory_purchase(
+  p_product_id uuid,
+  p_quantity_base numeric,
+  p_quantity_display numeric,
+  p_purchase_unit text,
+  p_purchase_price numeric,
+  p_payment_mode text default 'cash',
+  p_cash_amount numeric default 0,
+  p_upi_amount numeric default 0,
+  p_credit_amount numeric default 0,
+  p_debtor_id uuid default null,
+  p_pre_stock boolean default false,
+  p_supplier_name text default null
+) returns uuid
+language plpgsql security definer set search_path=''
+as $$
+declare
+  p public.products;
+  total numeric;
+  cash numeric := coalesce(p_cash_amount,0);
+  upi numeric := coalesce(p_upi_amount,0);
+  credit numeric := coalesce(p_credit_amount,0);
+  v_id uuid;
+  v_shop text;
+begin
+  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
+  if p_quantity_base <= 0 or p_quantity_display <= 0 or p_purchase_price < 0 then raise exception 'Invalid purchase'; end if;
+  if p_payment_mode not in ('cash','upi','split','credit','pre_stock') then raise exception 'Invalid payment mode'; end if;
+  select * into p from public.products where id=p_product_id and is_active=true for update;
+  if not found then raise exception 'Product not found'; end if;
+  if p.unit_type='piece' then
+    if p_purchase_unit<>'piece' or p_quantity_base<>p_quantity_display or mod(p_quantity_base,1)<>0 then raise exception 'Piece purchases must use whole pieces'; end if;
+  else
+    if p_purchase_unit not in ('grams','kg') then raise exception 'Weight purchases must use grams or kg'; end if;
+    if p_purchase_unit='kg' and p_quantity_base<>p_quantity_display*1000 then raise exception 'Invalid kg purchase quantity'; end if;
+    if p_purchase_unit='grams' and p_quantity_base<>p_quantity_display then raise exception 'Invalid gram purchase quantity'; end if;
+  end if;
+  if p.unit_type='weight' then total:=round((p_quantity_base/1000)*p_purchase_price,2); else total:=round(p_quantity_base*p_purchase_price,2); end if;
+
+  if p_pre_stock or p_payment_mode='pre_stock' then
+    cash:=0;upi:=0;credit:=0;p_payment_mode:='pre_stock';
+  elsif p_payment_mode='cash' then cash:=total;upi:=0;credit:=0;
+  elsif p_payment_mode='upi' then cash:=0;upi:=total;credit:=0;
+  elsif p_payment_mode='credit' then cash:=0;upi:=0;credit:=total;
+  elsif p_payment_mode='split' then
+    if cash<0 or upi<0 or abs(cash+upi-total)>0.01 then raise exception 'Cash + UPI must equal purchase total'; end if;
+    credit:=0;
+  end if;
+  if cash<0 or upi<0 or credit<0 or abs(cash+upi+credit-total)>0.01 then raise exception 'Purchase payment amounts must equal purchase total'; end if;
+  if credit>0 then
+    if p_debtor_id is null then raise exception 'Credit purchase requires a debtor'; end if;
+    if not exists(select 1 from public.debtors where id=p_debtor_id and shop_id=(select shop_id from public.profiles where id=auth.uid()) and is_active=true) then raise exception 'Debtor not found'; end if;
+  elsif p_debtor_id is not null then raise exception 'Debtor is only valid for credit purchases'; end if;
+
+  v_shop:=(select shop_id from public.profiles where id=auth.uid());
+  insert into public.inventory_purchases(
+    product_id,product_name_snapshot,quantity_base,quantity_display,purchase_unit,
+    purchase_price_per_base_unit,total_cost,purchased_by,payment_mode,cash_amount,upi_amount,
+    credit_amount,credit_paid,pre_stock,supplier_name,debtor_id
+  ) values (
+    p_product_id,p.name,p_quantity_base,p_quantity_display,p_purchase_unit,p_purchase_price,total,
+    auth.uid(),p_payment_mode,round(cash,2),round(upi,2),round(credit,2),0,p_payment_mode='pre_stock',
+    nullif(trim(coalesce(p_supplier_name,'')),''),p_debtor_id
+  ) returning id into v_id;
+
+  perform set_config('shop.allow_stock_change','on',true);
+  update public.products set current_stock_base=current_stock_base+p_quantity_base,
+    purchase_price_per_base_unit=p_purchase_price,updated_at=now() where id=p_product_id;
+  perform set_config('shop.allow_stock_change','off',true);
+
+  if credit>0 then
+    insert into public.debtor_ledger(shop_id,debtor_id,purchase_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,notes)
+    values(v_shop,p_debtor_id,v_id,'credit_purchase',credit,'credit',0,0,auth.uid(),'Credit purchase');
+  end if;
+  perform public.write_audit('purchase_added','inventory_purchase',v_id,jsonb_build_object('total',total,'payment_mode',p_payment_mode,'cash',cash,'upi',upi,'credit',credit,'pre_stock',p_payment_mode='pre_stock'));
+  return v_id;
+end;
+$$;
+revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric) from public,anon,authenticated;
+revoke all on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) from public,anon;
+grant execute on function public.add_inventory_purchase(uuid,numeric,numeric,text,numeric,text,numeric,numeric,numeric,uuid,boolean,text) to authenticated;
+
+create or replace function public.record_purchase_return(
+  p_product_id uuid,p_quantity_base numeric,p_quantity_display numeric,p_return_unit text,
+  p_return_price_per_base_unit numeric,p_payment_mode text default 'cash',
+  p_source_id uuid default null,p_reason text default '',p_account_id uuid default null
+) returns uuid
+language plpgsql security definer set search_path=''
+as $$
+declare
+  p public.products; src public.inventory_purchases; total numeric; v_id uuid; debtor uuid; v_shop text;
+begin
+  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
+  if trim(coalesce(p_reason,''))='' then raise exception 'Return reason is required'; end if;
+  if p_quantity_base<=0 or p_return_price_per_base_unit<0 then raise exception 'Invalid return'; end if;
+  if p_payment_mode not in ('cash','upi','credit_adjustment') then raise exception 'Invalid return payment mode'; end if;
+  select * into p from public.products where id=p_product_id and is_active=true for update;
+  if not found then raise exception 'Product not found'; end if;
+  if p.unit_type='piece' then
+    if p_return_unit<>'piece' or p_quantity_display<>p_quantity_base or mod(p_quantity_base,1)<>0 then raise exception 'Piece return must be whole pieces'; end if;
+  else
+    if p_return_unit not in ('grams','kg') then raise exception 'Weight return must use grams or kg'; end if;
+    if p_return_unit='kg' and p_quantity_base<>p_quantity_display*1000 then raise exception 'Invalid kg return'; end if;
+    if p_return_unit='grams' and p_quantity_base<>p_quantity_display then raise exception 'Invalid gram return'; end if;
+  end if;
+  if p.current_stock_base<p_quantity_base then raise exception 'Insufficient stock for purchase return'; end if;
+  if p_source_id is not null then
+    select * into src from public.inventory_purchases where id=p_source_id and product_id=p_product_id for share;
+    if not found then raise exception 'Original purchase not found'; end if;
+    if p_quantity_base > src.quantity_base - coalesce((select sum(r.quantity_base) from public.returns r where r.return_type='purchase' and r.source_id=src.id),0)
+      then raise exception 'Purchase return exceeds original purchase quantity'; end if;
+    debtor:=src.debtor_id;
+  else debtor:=p_account_id; end if;
+  if p_payment_mode='credit_adjustment' and debtor is null then raise exception 'Select the supplier/debtor for a credit adjustment'; end if;
+  total:=case when p.unit_type='weight' then round((p_quantity_base/1000)*p_return_price_per_base_unit,2) else round(p_quantity_base*p_return_price_per_base_unit,2) end;
+  v_shop:=(select shop_id from public.profiles where id=auth.uid());
+  insert into public.returns(shop_id,return_type,product_id,product_name_snapshot,quantity_base,quantity_display,return_unit,return_price_per_base_unit,total_amount,cost_amount,profit_impact,payment_mode,cash_amount,upi_amount,credit_amount,source_id,debtor_id,reason,returned_by)
+  values(v_shop,'purchase',p_product_id,p.name,p_quantity_base,p_quantity_display,p_return_unit,p_return_price_per_base_unit,total,total,0,p_payment_mode,case when p_payment_mode='cash' then total else 0 end,case when p_payment_mode='upi' then total else 0 end,case when p_payment_mode='credit_adjustment' then total else 0 end,p_source_id,debtor,trim(p_reason),auth.uid()) returning id into v_id;
+  perform set_config('shop.allow_stock_change','on',true);
+  update public.products set current_stock_base=current_stock_base-p_quantity_base,updated_at=now() where id=p_product_id;
+  perform set_config('shop.allow_stock_change','off',true);
+  if p_payment_mode='credit_adjustment' then
+    insert into public.debtor_ledger(shop_id,debtor_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,notes)
+    values(v_shop,debtor,'payment_made',total,'credit',0,0,auth.uid(),'Purchase return');
+  end if;
+  perform public.write_audit('purchase_return','return',v_id,jsonb_build_object('total',total,'quantity_base',p_quantity_base,'source_id',p_source_id));
+  return v_id;
+end;
+$$;
+
+create or replace function public.record_sale_return(
+  p_product_id uuid,p_quantity_base numeric,p_quantity_display numeric,p_return_unit text,
+  p_return_price_per_base_unit numeric,p_payment_mode text default 'cash',
+  p_source_id uuid default null,p_reason text default '',p_account_id uuid default null
+) returns uuid
+language plpgsql security definer set search_path=''
+as $$
+declare
+  p public.products; src public.sales; total numeric; cost numeric; profit numeric; v_id uuid; creditor uuid; v_shop text;
+begin
+  if not (select public.is_owner()) then raise exception 'Owner only'; end if;
+  if trim(coalesce(p_reason,''))='' then raise exception 'Return reason is required'; end if;
+  if p_quantity_base<=0 or p_return_price_per_base_unit<0 then raise exception 'Invalid return'; end if;
+  if p_payment_mode not in ('cash','upi','credit_adjustment') then raise exception 'Invalid return payment mode'; end if;
+  select * into p from public.products where id=p_product_id and is_active=true for update;
+  if not found then raise exception 'Product not found'; end if;
+  if p.unit_type='piece' then
+    if p_return_unit<>'piece' or p_quantity_display<>p_quantity_base or mod(p_quantity_base,1)<>0 then raise exception 'Piece return must be whole pieces'; end if;
+  else
+    if p_return_unit not in ('grams','kg') then raise exception 'Weight sale return must use grams or kg'; end if;
+    if p_return_unit='kg' and p_quantity_base<>p_quantity_display*1000 then raise exception 'Invalid kg return'; end if;
+    if p_return_unit='grams' and p_quantity_base<>p_quantity_display then raise exception 'Invalid gram return'; end if;
+  end if;
+  if p_source_id is not null then
+    select * into src from public.sales where id=p_source_id and product_id=p_product_id and not voided for share;
+    if not found then raise exception 'Original sale not found'; end if;
+    if p_quantity_base > src.quantity_base - coalesce((select sum(r.quantity_base) from public.returns r where r.return_type='sale' and r.source_id=src.id),0)
+      then raise exception 'Sale return exceeds original sold quantity'; end if;
+    cost:=case when src.quantity_base>0 then round(src.total_cost/src.quantity_base*p_quantity_base,2) else 0 end;
+    select st.creditor_id into creditor from public.sale_transactions st where st.id=src.transaction_id;
+  else
+    cost:=case when p.unit_type='weight' then round((p_quantity_base/1000)*p.purchase_price_per_base_unit,2) else round(p_quantity_base*p.purchase_price_per_base_unit,2) end;
+    creditor:=p_account_id;
+  end if;
+  if p_payment_mode='credit_adjustment' and creditor is null then raise exception 'Select the customer/creditor for a credit adjustment'; end if;
+  total:=case when p.unit_type='weight' then round((p_quantity_base/1000)*p_return_price_per_base_unit,2) else round(p_quantity_base*p_return_price_per_base_unit,2) end;
+  profit:=-(total-cost);
+  v_shop:=(select shop_id from public.profiles where id=auth.uid());
+  insert into public.returns(shop_id,return_type,product_id,product_name_snapshot,quantity_base,quantity_display,return_unit,return_price_per_base_unit,total_amount,cost_amount,profit_impact,payment_mode,cash_amount,upi_amount,credit_amount,source_id,creditor_id,reason,returned_by)
+  values(v_shop,'sale',p_product_id,p.name,p_quantity_base,p_quantity_display,p_return_unit,p_return_price_per_base_unit,total,cost,profit,p_payment_mode,case when p_payment_mode='cash' then total else 0 end,case when p_payment_mode='upi' then total else 0 end,case when p_payment_mode='credit_adjustment' then total else 0 end,p_source_id,creditor,trim(p_reason),auth.uid()) returning id into v_id;
+  perform set_config('shop.allow_stock_change','on',true);
+  update public.products set current_stock_base=current_stock_base+p_quantity_base,updated_at=now() where id=p_product_id;
+  perform set_config('shop.allow_stock_change','off',true);
+  if p_payment_mode='credit_adjustment' then
+    insert into public.credit_ledger(shop_id,creditor_id,type,amount,payment_mode,cash_amount,upi_amount,worker_id,notes)
+    values(v_shop,creditor,'payment_received',total,'credit',0,0,auth.uid(),'Sale return credit adjustment');
+  end if;
+  perform public.write_audit('sale_return','return',v_id,jsonb_build_object('total',total,'cost',cost,'profit_impact',profit,'source_id',p_source_id));
+  return v_id;
+end;
+$$;
+revoke all on function public.record_purchase_return(uuid,numeric,numeric,text,numeric,text,uuid,text,uuid) from public,anon;
+revoke all on function public.record_sale_return(uuid,numeric,numeric,text,numeric,text,uuid,text,uuid) from public,anon;
+grant execute on function public.record_purchase_return(uuid,numeric,numeric,text,numeric,text,uuid,text,uuid) to authenticated;
+grant execute on function public.record_sale_return(uuid,numeric,numeric,text,numeric,text,uuid,text,uuid) to authenticated;
+
+-- Returns are part of the permanent daily financial picture.
+create or replace function public.refresh_daily_financial_summary(p_shop_id text,p_business_date date)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+  insert into public.daily_financial_summaries(
+    shop_id,business_date,total_transactions,total_revenue,cash_sales,upi_sales,credit_sales,
+    total_profit,cash_profit,upi_profit,credit_profit,creditor_amount,
+    purchase_cash,purchase_upi,purchase_credit,total_purchases,pre_stock_purchases,
+    sales_returns,purchase_returns,sales_return_profit_impact,debtor_payment_cash,debtor_payment_upi,debtor_payment_total,updated_at)
+  select p_shop_id,p_business_date,
+    coalesce(s.tx_count,0),
+    round(coalesce(s.revenue,0)-coalesce(r.sales_ret,0),2),
+    coalesce(s.cash,0)-coalesce(r.sales_cash,0),
+    coalesce(s.upi,0)-coalesce(r.sales_upi,0),
+    coalesce(s.credit,0)-coalesce(r.sales_credit,0),
+    round(coalesce(s.profit,0)+coalesce(r.sales_profit_impact,0),2),
+    coalesce(s.cash_profit,0)+coalesce(r.sales_cash_profit_impact,0),
+    coalesce(s.upi_profit,0)+coalesce(r.sales_upi_profit_impact,0),
+    coalesce(s.credit_profit,0)+coalesce(r.sales_credit_profit_impact,0),
+    coalesce(s.credit,0)-coalesce(r.sales_credit,0),
+    coalesce(p.cash_purchase,0)-coalesce(r.purchase_cash,0),
+    coalesce(p.upi_purchase,0)-coalesce(r.purchase_upi,0),
+    coalesce(p.credit_purchase,0)-coalesce(r.purchase_credit,0),
+    coalesce(p.total_purchase,0)-coalesce(r.purchase_ret,0),
+    coalesce(p.pre_stock_purchase,0),
+    coalesce(r.sales_ret,0),coalesce(r.purchase_ret,0),coalesce(r.sales_profit_impact,0),coalesce(d.pay_cash,0),coalesce(d.pay_upi,0),coalesce(d.pay_total,0),now()
+  from (select 1) seed
+  left join lateral (
+    select count(distinct coalesce(s.transaction_id,s.id))::integer tx_count,
+      coalesce(sum(s.total_sale),0)::numeric revenue,
+      coalesce(sum(s.cash_amount),0)::numeric cash,
+      coalesce(sum(s.upi_amount),0)::numeric upi,
+      coalesce(sum(case when s.payment_mode in ('credit','credit_split') then greatest(s.total_sale-s.cash_amount-s.upi_amount,0) else 0 end),0)::numeric credit,
+      coalesce(sum(s.gross_profit),0)::numeric profit,
+      coalesce(sum(case when s.payment_mode='cash' then s.gross_profit when s.payment_mode='split' and s.total_sale>0 then s.gross_profit*s.cash_amount/s.total_sale else 0 end),0)::numeric cash_profit,
+      coalesce(sum(case when s.payment_mode='upi' then s.gross_profit when s.payment_mode='split' and s.total_sale>0 then s.gross_profit*s.upi_amount/s.total_sale else 0 end),0)::numeric upi_profit,
+      coalesce(sum(case when s.payment_mode in ('credit','credit_split') and s.total_sale>0 then s.gross_profit*greatest(s.total_sale-s.cash_amount-s.upi_amount,0)/s.total_sale else 0 end),0)::numeric credit_profit
+    from public.sales s join public.profiles w on w.id=s.worker_id
+    where w.shop_id=p_shop_id and not s.voided and public.business_date(s.sold_at)=p_business_date
+  ) s on true
+  left join lateral (
+    select coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode in ('cash','split') then i.cash_amount else 0 end),0)::numeric cash_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false)=false and i.payment_mode in ('upi','split') then i.upi_amount else 0 end),0)::numeric upi_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false)=false then i.credit_amount else 0 end),0)::numeric credit_purchase,
+      coalesce(sum(case when i.payment_mode in ('cash','upi','split','credit') then i.total_cost else 0 end),0)::numeric total_purchase,
+      coalesce(sum(case when coalesce(i.pre_stock,false) then i.total_cost else 0 end),0)::numeric pre_stock_purchase
+    from public.inventory_purchases i join public.profiles w on w.id=i.purchased_by
+    where w.shop_id=p_shop_id and public.business_date(i.purchased_at)=p_business_date
+  ) p on true
+  left join lateral (
+    select coalesce(sum(case when type='payment_made' then cash_amount else 0 end),0)::numeric pay_cash,
+      coalesce(sum(case when type='payment_made' then upi_amount else 0 end),0)::numeric pay_upi,
+      coalesce(sum(case when type='payment_made' then amount else 0 end),0)::numeric pay_total
+    from public.debtor_ledger dl
+    where dl.shop_id=p_shop_id and public.business_date(dl.created_at)=p_business_date
+  ) d on true
+  left join lateral (
+    select coalesce(sum(case when return_type='sale' then total_amount else 0 end),0)::numeric sales_ret,
+      coalesce(sum(case when return_type='sale' then cash_amount else 0 end),0)::numeric sales_cash,
+      coalesce(sum(case when return_type='sale' then upi_amount else 0 end),0)::numeric sales_upi,
+      coalesce(sum(case when return_type='sale' then credit_amount else 0 end),0)::numeric sales_credit,
+      coalesce(sum(case when return_type='sale' then profit_impact else 0 end),0)::numeric sales_profit_impact,
+      coalesce(sum(case when return_type='sale' and cash_amount>0 then profit_impact else 0 end),0)::numeric sales_cash_profit_impact,
+      coalesce(sum(case when return_type='sale' and upi_amount>0 then profit_impact else 0 end),0)::numeric sales_upi_profit_impact,
+      coalesce(sum(case when return_type='sale' and credit_amount>0 then profit_impact else 0 end),0)::numeric sales_credit_profit_impact,
+      coalesce(sum(case when return_type='purchase' then total_amount else 0 end),0)::numeric purchase_ret,
+      coalesce(sum(case when return_type='purchase' then cash_amount else 0 end),0)::numeric purchase_cash,
+      coalesce(sum(case when return_type='purchase' then upi_amount else 0 end),0)::numeric purchase_upi,
+      coalesce(sum(case when return_type='purchase' then credit_amount else 0 end),0)::numeric purchase_credit
+    from public.returns where shop_id=p_shop_id and public.business_date(returned_at)=p_business_date
+  ) r on true
+  on conflict(shop_id,business_date) do update set
+    total_transactions=excluded.total_transactions,total_revenue=excluded.total_revenue,cash_sales=excluded.cash_sales,
+    upi_sales=excluded.upi_sales,credit_sales=excluded.credit_sales,total_profit=excluded.total_profit,
+    cash_profit=excluded.cash_profit,upi_profit=excluded.upi_profit,credit_profit=excluded.credit_profit,
+    creditor_amount=excluded.creditor_amount,purchase_cash=excluded.purchase_cash,purchase_upi=excluded.purchase_upi,
+    purchase_credit=excluded.purchase_credit,total_purchases=excluded.total_purchases,
+    pre_stock_purchases=excluded.pre_stock_purchases,sales_returns=excluded.sales_returns,
+    purchase_returns=excluded.purchase_returns,sales_return_profit_impact=excluded.sales_return_profit_impact,updated_at=now();
+end;
+$$;
+revoke all on function public.refresh_daily_financial_summary(text,date) from public,anon,authenticated;
+
+create or replace function public.returns_financial_aggregate_trigger()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare v_shop text; v_date date;
+begin
+ v_shop:=coalesce(new.shop_id,old.shop_id); v_date:=public.business_date(coalesce(new.returned_at,old.returned_at));
+ perform public.refresh_daily_financial_summary(v_shop,v_date);
+ perform public.refresh_lifetime_financial_summary(v_shop);
+ return coalesce(new,old);
+end; $$;
+drop trigger if exists returns_financial_aggregate_trigger on public.returns;
+create trigger returns_financial_aggregate_trigger after insert or update or delete on public.returns
+for each row execute function public.returns_financial_aggregate_trigger();
+
+alter table public.returns enable row level security;
+drop policy if exists "returns owner read" on public.returns;
+create policy "returns owner read" on public.returns for select to authenticated using ((select public.is_owner()));
+grant select on public.returns to authenticated;
+
+-- Keep purchase and sales aggregate triggers on the configured business day.
+create or replace function public.sales_financial_aggregate_trigger()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare v_shop text;
+begin
+ select shop_id into v_shop from public.profiles where id=coalesce(new.worker_id,old.worker_id);
+ if old is not null then perform public.refresh_daily_financial_summary(v_shop,public.business_date(old.sold_at)); end if;
+ if new is not null then perform public.refresh_daily_financial_summary(v_shop,public.business_date(new.sold_at)); end if;
+ perform public.refresh_lifetime_financial_summary(v_shop); return coalesce(new,old);
+end; $$;
+
+create or replace function public.purchase_financial_aggregate_trigger()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare v_shop text;
+begin
+ select shop_id into v_shop from public.profiles where id=coalesce(new.purchased_by,old.purchased_by);
+ if old is not null then perform public.refresh_daily_financial_summary(v_shop,public.business_date(old.purchased_at)); end if;
+ if new is not null then perform public.refresh_daily_financial_summary(v_shop,public.business_date(new.purchased_at)); end if;
+ perform public.refresh_lifetime_financial_summary(v_shop); return coalesce(new,old);
+end; $$;
+
+
+-- Rebuild permanent aggregates using the configured business-day reset after
+-- all patched functions/triggers are installed.
+do $$
+declare r record;
+begin
+  for r in
+    select distinct w.shop_id, public.business_date(s.sold_at) business_date
+    from public.sales s join public.profiles w on w.id=s.worker_id
+    where w.shop_id is not null
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct w.shop_id, public.business_date(p.purchased_at) business_date
+    from public.inventory_purchases p join public.profiles w on w.id=p.purchased_by
+    where w.shop_id is not null
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct d.shop_id, public.business_date(d.created_at) business_date
+    from public.debtor_ledger d
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in
+    select distinct r.shop_id, public.business_date(r.returned_at) business_date
+    from public.returns r
+  loop
+    perform public.refresh_daily_financial_summary(r.shop_id,r.business_date);
+  end loop;
+  for r in select distinct shop_id from public.daily_financial_summaries
+  loop
+    perform public.refresh_lifetime_financial_summary(r.shop_id);
+  end loop;
+end $$;
