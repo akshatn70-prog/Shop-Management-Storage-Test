@@ -3121,6 +3121,7 @@ declare
   v_purchase_deleted bigint:=0;
   v_audit_deleted bigint:=0;
   v_credit_deleted bigint:=0;
+  v_row_count bigint:=0;
   r record;
 begin
   -- Always refresh the permanent aggregate before deleting detail.
@@ -3182,7 +3183,8 @@ begin
     where creditor_id=r.id
       and shop_id=r.shop_id
       and created_at < now()-interval '7 days';
-    get diagnostics v_credit_deleted=v_credit_deleted+row_count;
+    get diagnostics v_row_count=row_count;
+    v_credit_deleted:=v_credit_deleted+v_row_count;
   end loop;
 
   for r in select distinct shop_id from public.daily_financial_summaries
