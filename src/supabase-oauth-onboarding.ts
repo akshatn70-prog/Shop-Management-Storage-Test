@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 
 const RENDER_BASE="https://shop-management-oauth.onrender.com";
+const PRODUCTION_APP_URL="https://shop-management-storage-test.onrender.com";
 const URL_KEY="shop_management_supabase_url";
 const KEY_KEY="shop_management_supabase_publishable_key";
 let busy=false;
@@ -147,7 +148,7 @@ async function register(){
         password,
         options:{
           data:{full_name:name},
-          emailRedirectTo:window.location.origin
+          emailRedirectTo:PRODUCTION_APP_URL
         }
       });
       if(signUp.error)throw new Error(signUp.error.message);
