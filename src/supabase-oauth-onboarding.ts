@@ -16,7 +16,7 @@ function localConnection(){
 const CONFIRM_FLAG="shop_management_email_confirmed";
 
 const APP_VERSION="1.0.0";
-const UPDATE_REPO="akshatn70-prog/Shop-Management-Storage-Test";
+const UPDATE_REPO="geminiusage143-lab/Shop-Management-Storage-Test";
 
 function compareAppVersions(a:string,b:string){
   const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
