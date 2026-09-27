@@ -146,29 +146,6 @@ async function checkForAppUpdate(){
   }
 }
 
-async function checkForAppUpdate(){
-  try{
-    const response=await fetch("https://api.github.com/repos/"+UPDATE_REPO+"/releases/latest",{headers:{Accept:"application/vnd.github+json"}});
-    if(!response.ok)throw new Error("Could not check for the latest app release.");
-    const release=await response.json();
-    const latest=String(release.tag_name||"").replace(/^v/i,"");
-    const apk=(Array.isArray(release.assets)?release.assets:[]).find((asset:any)=>String(asset.name||"").toLowerCase().endsWith(".apk"));
-    if(!latest||!apk?.browser_download_url)throw new Error("No downloadable APK was found in the latest release.");
-    if(compareAppVersions(latest,APP_VERSION)<=0){
-      message("You are using the latest app version (v"+APP_VERSION+").","info");
-      return;
-    }
-    const ok=window.confirm("A new Shop Management version is available.\n\nCurrent: v"+APP_VERSION+"\nLatest: v"+latest+"\n\nDownload the update now?");
-    if(!ok)return;
-    if(Capacitor.isNativePlatform()){
-      try{await Browser.open({url:String(apk.browser_download_url)})}catch{window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer")}
-    }else{
-      window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer");
-    }
-  }catch(e){
-    message(e instanceof Error?e.message:String(e),"danger");
-  }
-}
 
 async function handleEmailConfirmationRedirect(){
   const c=localConnection();
