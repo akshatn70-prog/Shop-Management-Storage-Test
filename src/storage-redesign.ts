@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { ShopDownloads } from "@shop-management/downloads";
 import "./styles.css";
 
@@ -18,6 +19,39 @@ let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
 const app=document.querySelector<HTMLDivElement>("#app")!;
+
+const APP_VERSION="1.0.0";
+const UPDATE_REPO="akshatn70-prog/Shop-Management-Storage-Test";
+
+function compareAppVersions(a:string,b:string){
+ const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
+ const pb=b.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
+ for(let i=0;i<3;i++){
+  const av=pa[i]||0,bv=pb[i]||0;
+  if(av>bv)return 1;
+  if(av<bv)return -1;
+ }
+ return 0;
+}
+
+async function checkForAppUpdate(){
+ try{
+  const response=await fetch("https://api.github.com/repos/"+UPDATE_REPO+"/releases/latest",{headers:{Accept:"application/vnd.github+json"}});
+  if(!response.ok)throw new Error("Could not check for the latest app release.");
+  const release=await response.json();
+  const latest=String(release.tag_name||"").replace(/^v/i,"");
+  const apk=(Array.isArray(release.assets)?release.assets:[]).find((asset:any)=>String(asset.name||"").toLowerCase().endsWith(".apk"));
+  if(!latest||!apk?.browser_download_url)throw new Error("No downloadable APK was found in the latest release.");
+  if(compareAppVersions(latest,APP_VERSION)<=0){
+   notify("You are using the latest app version (v"+APP_VERSION+").","success");
+   return;
+  }
+  const ok=window.confirm("A new Shop Management version is available.\n\nCurrent: v"+APP_VERSION+"\nLatest: v"+latest+"\n\nDownload the update now?");
+  if(!ok)return;
+  if(Capacitor.isNativePlatform())await Browser.open({url:String(apk.browser_download_url)});
+  else window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer");
+ }catch(e){notify(e instanceof Error?e.message:String(e),"error")}
+}
 
 const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b>'+v+'</b></div>';
 const money=(n:any)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
@@ -607,9 +641,10 @@ function settingsView(){
  const hourOptions=[1,2,3,4,5,6,7,8,9,10,11,12].map(h=>'<option value="'+h+'"'+(h===resetHour12?" selected":"")+'>'+h+'</option>').join("");
  const minuteOptions=Array.from({length:60},(_,i)=>{const v=String(i).padStart(2,"0");return '<option value="'+v+'"'+(i===resetMinute?" selected":"")+'>'+v+'</option>'}).join("");
  const periodOptions='<option value="AM"'+(resetPeriod==="AM"?" selected":"")+'>AM</option><option value="PM"'+(resetPeriod==="PM"?" selected":"")+'>PM</option>';
- return '<section class="page"><h2>Settings</h2><div class="panel"><form id="settingsForm" class="form-grid"><label>Shop name<input name="shop_name" value="'+esc(settings.shop_name)+'" required></label><label>Shop ID<input value="'+esc(settings.shop_id||profile?.shop_id||"Not configured")+'" readonly></label><label>Currency<input name="currency" value="'+esc(settings.currency||"INR")+'" required></label><label>Timezone<input name="timezone" value="'+esc(settings.timezone||"Asia/Kolkata")+'" required></label><label>Dashboard reset time<div class="form-grid"><select name="resetHour">'+hourOptions+'</select><select name="resetMinute">'+minuteOptions+'</select><select name="resetPeriod">'+periodOptions+'</select></div><span class="tiny">12-hour AM/PM</span></label><label class="check"><input type="checkbox" name="allow_below_cost_sales" '+(settings.allow_below_cost_sales!==false?"checked":"")+'> Allow sales below purchase cost</label><label class="check"><input type="checkbox" name="allow_zero_price_sales" '+(settings.allow_zero_price_sales!==false?"checked":"")+'> Allow zero-price/free sales</label><label class="check"><input type="checkbox" name="workers_can_modify_selling_price" '+(settings.workers_can_modify_selling_price===true?"checked":"")+'> Workers can modify selling price</label><div class="full"><button class="primary">Save Settings</button></div></form></div><div class="panel"><h3>Supabase Project</h3><p class="muted">Owner can verify or change the connected project.</p><div class="action-row"><button id="verifyDb" class="ghost" type="button">Verify Database</button><button id="downloadSqlSettingsBtn" class="ghost" type="button">Download SQL</button><button id="downloadConnectionBtn" class="ghost" type="button">Download URL + Key</button><button id="changeDb" class="ghost" type="button">Change Supabase Project</button></div></div><div class="panel"><div class="action-row"><button id="shopIdCopy" class="ghost">Copy Shop ID</button><button id="exportBtn" class="ghost">Export JSON Backup</button><button id="downloadReport" class="ghost">Download Complete TXT Report</button><button id="clearAll" class="danger">Clear All Transaction Data</button></div></div></section>';
+ return '<section class="page"><h2>Settings</h2><div class="panel"><form id="settingsForm" class="form-grid"><label>Shop name<input name="shop_name" value="'+esc(settings.shop_name)+'" required></label><label>Shop ID<input value="'+esc(settings.shop_id||profile?.shop_id||"Not configured")+'" readonly></label><label>Currency<input name="currency" value="'+esc(settings.currency||"INR")+'" required></label><label>Timezone<input name="timezone" value="'+esc(settings.timezone||"Asia/Kolkata")+'" required></label><label>Dashboard reset time<div class="form-grid"><select name="resetHour">'+hourOptions+'</select><select name="resetMinute">'+minuteOptions+'</select><select name="resetPeriod">'+periodOptions+'</select></div><span class="tiny">12-hour AM/PM</span></label><label class="check"><input type="checkbox" name="allow_below_cost_sales" '+(settings.allow_below_cost_sales!==false?"checked":"")+'> Allow sales below purchase cost</label><label class="check"><input type="checkbox" name="allow_zero_price_sales" '+(settings.allow_zero_price_sales!==false?"checked":"")+'> Allow zero-price/free sales</label><label class="check"><input type="checkbox" name="workers_can_modify_selling_price" '+(settings.workers_can_modify_selling_price===true?"checked":"")+'> Workers can modify selling price</label><div class="full"><button class="primary">Save Settings</button></div></form></div><div class="panel"><h3>Supabase Project</h3><p class="muted">Owner can verify or change the connected project.</p><div class="action-row"><button id="verifyDb" class="ghost" type="button">Verify Database</button><button id="downloadSqlSettingsBtn" class="ghost" type="button">Download SQL</button><button id="downloadConnectionBtn" class="ghost" type="button">Download URL + Key</button><button id="appUpdateSettings" class="ghost" type="button">Check for App Update</button><button id="changeDb" class="ghost" type="button">Change Supabase Project</button></div></div><div class="panel"><div class="action-row"><button id="shopIdCopy" class="ghost">Copy Shop ID</button><button id="exportBtn" class="ghost">Export JSON Backup</button><button id="downloadReport" class="ghost">Download Complete TXT Report</button><button id="clearAll" class="danger">Clear All Transaction Data</button></div></div></section>';
 }
 function bindSettings(){
+ document.querySelector("#appUpdateSettings")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateSettings");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate()}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateSettings");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
  document.querySelector("#settingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),tz=String(fd.get("timezone")||"").trim();try{new Intl.DateTimeFormat("en-US",{timeZone:tz}).format()}catch{return notify("Invalid IANA timezone.","error")}const h=Number(fd.get("resetHour")||12),mi=String(fd.get("resetMinute")||"00"),period=String(fd.get("resetPeriod")||"AM"),h24=period==="AM"?(h===12?0:h):(h===12?12:h+12),next={shop_name:String(fd.get("shop_name")),currency:String(fd.get("currency")),timezone:tz,dashboard_reset_time:String(h24).padStart(2,"0")+":"+mi,allow_below_cost_sales:fd.get("allow_below_cost_sales")==="on",allow_zero_price_sales:fd.get("allow_zero_price_sales")==="on",workers_can_modify_selling_price:fd.get("workers_can_modify_selling_price")==="on"};if(demo){settings={...settings,...next};notify("Settings saved.","success");render();return}const r=await supabase!.from("shop_settings").update({...next,updated_at:new Date().toISOString()}).eq("id",1);if(r.error)return notify(r.error.message,"error");settings={...settings,...next};notify("Settings saved.","success");render()});
  document.querySelector("#verifyDb")?.addEventListener("click",async()=>{
   const btn=document.querySelector<HTMLButtonElement>("#verifyDb");
@@ -783,10 +818,12 @@ function login(msg=""){
    (message?'<div class="notice danger">'+esc(message)+'</div>':"")+
    '<form id="connectForm"><label>Supabase Project URL<input name="url" placeholder="https://xxxxx.supabase.co" value="'+esc(saved.url)+'" required></label>'+
    '<label>Publishable Key<input name="key" placeholder="sb_publishable_..." value="'+esc(saved.key)+'" required></label>'+
-   '<button class="primary wide">Connect</button></form>'+
+   '<button class="primary wide">Connect</button></form><button id="appUpdateLogin" class="ghost wide" type="button">Check for App Update</button>'+
    '<p class="tiny">Your URL and publishable key stay on this device. You will only need them again after reinstalling or using a new device.</p></div></div>';
 
-  document.querySelector<HTMLFormElement>("#connectForm")?.addEventListener("submit",async e=>{
+  document.querySelector("#appUpdateLogin")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate()}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
+
+ document.querySelector<HTMLFormElement>("#connectForm")?.addEventListener("submit",async e=>{
    e.preventDefault();
    const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),url=String(fd.get("url")||"").trim(),key=String(fd.get("key")||"").trim();
    if(!url||!key)return notify("Enter both the Supabase URL and publishable key.","error");
