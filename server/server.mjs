@@ -11,6 +11,8 @@ const OAUTH_CLIENT_SECRET=process.env.SUPABASE_OAUTH_CLIENT_SECRET||"";
 const OAUTH_REDIRECT_URI=process.env.SUPABASE_OAUTH_REDIRECT_URI||"";
 const OAUTH_TICKET_SECRET=process.env.OAUTH_TICKET_SECRET||"";
 const APP_ORIGIN=process.env.APP_ORIGIN||"*";
+const CENTRAL_SUPABASE_URL=process.env.CENTRAL_SUPABASE_URL||"";
+const CENTRAL_SUPABASE_SERVICE_ROLE_KEY=process.env.CENTRAL_SUPABASE_SERVICE_ROLE_KEY||"";
 
 const sessions=new Map();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
@@ -161,6 +163,43 @@ const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url||"/","http://localhost");
   try{
     if(u.pathname==="/health")return json(res,200,{ok:true});
+    if(u.pathname==="/api/central/health" && req.method==="GET"){
+  if(!CENTRAL_SUPABASE_URL||!CENTRAL_SUPABASE_SERVICE_ROLE_KEY)
+    return json(res,500,{ok:false,error:"Central Supabase environment variables are not configured."});
+
+  try{
+    const r=await fetch(
+      CENTRAL_SUPABASE_URL.replace(/\/$/,"")+
+      "/rest/v1/shop_installations?select=id&limit=1",
+      {
+        headers:{
+          apikey:CENTRAL_SUPABASE_SERVICE_ROLE_KEY,
+          Authorization:"Bearer "+CENTRAL_SUPABASE_SERVICE_ROLE_KEY,
+          Accept:"application/json"
+        }
+      }
+    );
+
+    if(!r.ok)
+      throw new Error("Central Supabase request failed (HTTP "+r.status+").");
+
+    const data=await r.json().catch(()=>[]);
+
+    return json(res,200,{
+      ok:true,
+      central_supabase:true,
+      shop_installations_accessible:Array.isArray(data)
+    });
+  }catch(e){
+    return json(res,502,{
+      ok:false,
+      central_supabase:false,
+      error:e instanceof Error
+        ? e.message
+        : "Central Supabase connection failed."
+    });
+  }
+}
     if(u.pathname==="/api/oauth/start" && req.method==="POST"){
       if(!OAUTH_CLIENT_ID||!OAUTH_CLIENT_SECRET||!OAUTH_REDIRECT_URI||!OAUTH_TICKET_SECRET)throw new Error("Render OAuth environment variables are not configured.");
       const sessionId=random(24),state=random(24),verifier=random(48);
