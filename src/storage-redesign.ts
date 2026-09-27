@@ -14,7 +14,7 @@ let supabase:SupabaseClient|null=null, profile:Profile|null=null;
 let settings:any={shop_name:"My Shop",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:false,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00"};
 let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:AnyRow[]=[], ledger:AnyRow[]=[], debtors:AnyRow[]=[], debtorLedger:AnyRow[]=[], daily:AnyRow[]=[], auditRows:AnyRow[]=[], workersRows:Profile[]=[], lifetime:any={};
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
-let bottomNavScrollLeft=0;
+let bottomNavScrollLeft=0, reportTableScrollLeft=0;
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
@@ -22,6 +22,7 @@ const app=document.querySelector<HTMLDivElement>("#app")!;
 
 const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b>'+v+'</b></div>';
 const money=(n:any)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
+const saleTotal=(p:Product|null|undefined,quantityBase:number,sellingPricePerBaseUnit:number)=>p?.unit_type==="weight"?(quantityBase/1000)*sellingPricePerBaseUnit:quantityBase*sellingPricePerBaseUnit;
 const esc=(s:any)=>String(s??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
 const downloadText=async(fileName:string,content:string)=>{
  try{
@@ -150,7 +151,7 @@ async function setupRealtime(){
  if(demo||!supabase||!profile)return;
  if(realtimeChannel)await supabase.removeChannel(realtimeChannel);
  if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}
- const tables=["sales","inventory_purchases","debtor_ledger","returns","products","daily_financial_summaries","lifetime_financial_summaries"];
+ const tables=["sales","inventory_purchases","credit_ledger","debtor_ledger","returns","products","daily_financial_summaries","lifetime_financial_summaries"];
  realtimeChannel=supabase.channel("shop-management-live-"+profile.id);
  for(const table of tables){
   realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},async()=>{
@@ -161,7 +162,7 @@ async function setupRealtime(){
  realtimeChannel.subscribe();
  realtimeRefreshTimer=window.setInterval(async()=>{
   if(!profile||demo||!supabase)return;
-  if(activeTab==="today"){await loadData();render()}else if(activeTab==="reports"){await loadData()}
+  if(activeTab==="today"||activeTab==="reports"){await loadData();render()}
  },5000);
 }
 
@@ -182,10 +183,10 @@ function sale(){
 }
 
 function cart(){
- const total=cartItems.reduce((a,x)=>a+Number(x.quantity_base)*Number(x.selling_price_per_base_unit),0);
+ const total=cartItems.reduce((a,x)=>{const p=products.find(p=>p.id===x.product_id);return a+saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0)},0);
  return '<section class="page"><div class="page-head"><h2>Cart</h2><span class="badge">'+cartItems.length+' item(s)</span></div><div class="panel"><div class="search-row"><input id="cartSearch" placeholder="Search product to add..."><button id="cartSearchBtn" class="ghost">Search</button></div><div id="cartProducts" class="product-grid"></div><form id="cartAdd" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' — '+p.current_stock_base+' available</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min="0.001" step=".001" value="1"></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="grams">grams</option><option value="kg">kg</option></select></label><label>Selling price<input name="price" type="number" step=".01" min="0"></label><div class="full notice" id="cartPreview">Preview: select a product</div><button class="primary full">Add to Cart</button></form><div class="notice">Cart total: <b>'+money(total)+'</b></div>'+ (cartItems.length?'<div class="table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Total</th><th></th></tr></thead><tbody>'+cartItems.map((x,i)=>'<tr><td>'+esc(x.product_name_snapshot||products.find(p=>p.id===x.product_id)?.name||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+money(Number(x.quantity_base)*Number(x.selling_price_per_base_unit))+'</td><td><button class="smallbtn edit-cart" data-i="'+i+'">Edit</button> <button class="smallbtn delete-cart" data-i="'+i+'">Delete</button></td></tr>').join("")+'</tbody></table></div>':"")+'<div class="panel"><form id="cartPay" class="form-grid"><label>Payment<select name="mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label><label>Cash<input name="cash" type="number" step=".01" value="'+total.toFixed(2)+'"></label><label>UPI<input name="upi" type="number" step=".01" value="0"></label><label>Credit<input name="credit" type="number" step=".01" value="0"></label><label>Creditor<select name="creditor"><option value="">Select creditor</option>'+creditors.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'<option value="__new__">＋ New Creditor</option></select></label><button class="primary full" '+(cartItems.length?"":"disabled")+'>Confirm Cart Sale</button></form></div></div></section>';
 }async function saveSale(item:any,mode:string,cash:number,upi:number,credit:number,creditorId:string|null){
- if(demo){const p=products.find(x=>x.id===item.product_id);if(!p)throw new Error("Product not found");const total=item.quantity_base*item.selling_price_per_base_unit;sales.unshift({...item,id:"demo-sale-"+Date.now(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:total,gross_profit:(item.selling_price_per_base_unit-p.purchase_price_per_base_unit)*item.quantity_base,cash_amount:cash,upi_amount:upi,credit_amount:credit,payment_mode:mode,voided:false,transaction_id:"demo-tx-"+Date.now(),products:{name:p.name},profiles:{full_name:profile!.full_name}});p.current_stock_base-=item.quantity_base;if(credit>0&&creditorId)ledger.unshift({id:"demo-ledger-"+Date.now(),creditor_id:creditorId,type:"credit_sale",amount:credit,payment_mode:mode,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});return}
+ if(demo){const p=products.find(x=>x.id===item.product_id);if(!p)throw new Error("Product not found");const total=item.quantity_base*item.selling_price_per_base_unit;sales.unshift({...item,id:"demo-sale-"+Date.now(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:total,gross_profit:(p.unit_type==="weight"?((item.selling_price_per_base_unit-p.purchase_price_per_base_unit)*item.quantity_base/1000):((item.selling_price_per_base_unit-p.purchase_price_per_base_unit)*item.quantity_base)),cash_amount:cash,upi_amount:upi,credit_amount:credit,payment_mode:mode,voided:false,transaction_id:"demo-tx-"+Date.now(),products:{name:p.name},profiles:{full_name:profile!.full_name}});p.current_stock_base-=item.quantity_base;if(credit>0&&creditorId)ledger.unshift({id:"demo-ledger-"+Date.now(),creditor_id:creditorId,type:"credit_sale",amount:credit,payment_mode:mode,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});return}
  if(mode==="cash"||mode==="upi"||mode==="split"){
   const r=await supabase!.rpc("record_sale",{p_product_id:item.product_id,p_worker_id:profile!.id,p_quantity_base:item.quantity_base,p_quantity_display:item.quantity_display,p_sold_unit:item.sold_unit,p_selling_price_per_base_unit:item.selling_price_per_base_unit,p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi});
   if(r.error)throw r.error;
@@ -241,7 +242,7 @@ function bindSale(){
  const saleCreditor=f.elements.namedItem("creditor") as HTMLSelectElement;
 saleCreditor.addEventListener("change",async()=>{if(saleCreditor.value!=="__new__")return;const n=prompt("Creditor name");if(!n?.trim()){saleCreditor.value="";return}const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){saleCreditor.value="";return}try{const c=await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}catch(err){saleCreditor.value="";notify(errorMessage(err),"error")}});
 mode.addEventListener("change",()=>{const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";if(!cr) (f.elements.namedItem("creditor") as HTMLSelectElement).value="";document.querySelector("#cashBox")?.classList.toggle("hidden",!split);document.querySelector("#upiBox")?.classList.toggle("hidden",!split);document.querySelector("#creditBox")?.classList.toggle("hidden",v!=="credit_split");document.querySelector("#creditorBox")?.classList.toggle("hidden",!cr);update(false)});update();
- f.addEventListener("submit",async e=>{e.preventDefault();const p=products.find(x=>x.id===sel.value)!;const n=Number(qty.value),base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n,total=base*Number(price.value),v=mode.value;let cash=Number((f.elements.namedItem("cash") as HTMLInputElement).value)||0,upi=Number((f.elements.namedItem("upi") as HTMLInputElement).value)||0,credit=Number((f.elements.namedItem("credit") as HTMLInputElement).value)||0;const cr=(f.elements.namedItem("creditor") as HTMLSelectElement).value||null;if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");if(v==="cash"){cash=total;upi=0;credit=0}if(v==="upi"){cash=0;upi=total;credit=0}if(v==="credit"){cash=0;upi=0;credit=total}if(v==="split"&&Math.abs(cash+upi-total)>.01)return notify("Cash + UPI must equal total.","error");if(v==="credit_split"&&(credit<=0||Math.abs(cash+upi+credit-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");if((v==="credit"||v==="credit_split")&&!cr)return notify("Select a creditor.","error");try{await saveSale({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value)},v,cash,upi,credit,cr);notify("Sale completed.","success");await loadData();render()}catch(err){notify(errorMessage(err),"error")}})
+ f.addEventListener("submit",async e=>{e.preventDefault();const p=products.find(x=>x.id===sel.value)!;const n=Number(qty.value),base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n,total=saleTotal(p,base,Number(price.value)),v=mode.value;let cash=Number((f.elements.namedItem("cash") as HTMLInputElement).value)||0,upi=Number((f.elements.namedItem("upi") as HTMLInputElement).value)||0,credit=Number((f.elements.namedItem("credit") as HTMLInputElement).value)||0;const cr=(f.elements.namedItem("creditor") as HTMLSelectElement).value||null;if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");if(v==="cash"){cash=total;upi=0;credit=0}if(v==="upi"){cash=0;upi=total;credit=0}if(v==="credit"){cash=0;upi=0;credit=total}if(v==="split"&&Math.abs(cash+upi-total)>.01)return notify("Cash + UPI must equal total.","error");if(v==="credit_split"&&(credit<=0||Math.abs(cash+upi+credit-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");if((v==="credit"||v==="credit_split")&&!cr)return notify("Select a creditor.","error");try{await saveSale({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value)},v,cash,upi,credit,cr);notify("Sale completed.","success");await loadData();render()}catch(err){notify(errorMessage(err),"error")}})
 }
 
 function bindCart(){
@@ -263,7 +264,7 @@ function bindCart(){
   const n=Number(qty.value)||0;
   const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
   const preview=document.querySelector("#cartPreview");
-  if(preview)preview.textContent="Preview: "+p.name+" × "+n+" = "+money(base*Number(price.value));
+  if(preview)preview.textContent="Preview: "+p.name+" × "+n+" = "+money(saleTotal(p,base,Number(price.value)));
   root?.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(x=>x.classList.toggle("selected",x.dataset.cartProduct===p.id));
  };
 
@@ -330,10 +331,10 @@ function bindCart(){
   if(!q||q<=0)return;
   const base=p.unit_type==="piece"?q:x.sold_unit==="kg"?q*1000:q;
   if(base>p.current_stock_base)return notify("Insufficient stock.","error");
-  const oldTotal=base*Number(x.selling_price_per_base_unit);
+  const oldTotal=saleTotal(p,base,Number(x.selling_price_per_base_unit));
   const editedTotal=Number(prompt("Total money for this item",oldTotal.toFixed(2)));
   if(!Number.isFinite(editedTotal)||editedTotal<0)return;
-  x.quantity_display=q;x.quantity_base=base;x.selling_price_per_base_unit=base>0?editedTotal/base:0;render();
+  x.quantity_display=q;x.quantity_base=base;x.selling_price_per_base_unit=base>0?(p.unit_type==="weight"?editedTotal*1000/base:editedTotal/base):0;render();
  }));
 
  const pay=document.querySelector<HTMLFormElement>("#cartPay")!;
@@ -341,7 +342,7 @@ function bindCart(){
  const cash=pay.elements.namedItem("cash") as HTMLInputElement;
  const upi=pay.elements.namedItem("upi") as HTMLInputElement;
  const credit=pay.elements.namedItem("credit") as HTMLInputElement;
- let total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
+ let total=cartItems.reduce((a,x)=>{const p=products.find(p=>p.id===x.product_id);return a+saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0)},0);
  const toggle=()=>{
   const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";
   document.querySelector("#cartCashBox")?.classList.toggle("hidden",!split);
@@ -377,7 +378,7 @@ function bindCart(){
    }
   }
   cartItems=merged;
-  total=cartItems.reduce((a,x)=>a+(Number(x.quantity_base)||0)*(Number(x.selling_price_per_base_unit)||0),0);
+  total=cartItems.reduce((a,x)=>{const p=products.find(p=>p.id===x.product_id);return a+saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0)},0);
   if(!cartItems.length)return notify("Add items first.","error");
   let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;
   if(mode.value==="cash"){c=total;u=0;cr=0}
@@ -391,9 +392,9 @@ function bindCart(){
    if(demo){
     for(const x of cartItems){
      const p=products.find(p=>p.id===x.product_id)!;
-     const itemTotal=x.quantity_base*x.selling_price_per_base_unit;
+     const itemTotal=saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0);
      p.current_stock_base-=x.quantity_base;
-     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base,cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
+     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(p.unit_type==="weight"?((x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base/1000):((x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base)),cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
     }
     if(cr>0&&crid)ledger.unshift({id:"cart-ledger-"+Date.now(),creditor_id:crid,type:"credit_sale",amount:cr,payment_mode:mode.value,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
    }else{
@@ -585,7 +586,7 @@ function reports(){
  const latest=[...daily,...(lifetime?[lifetime]:[])].map((x:any)=>x.updated_at).filter(Boolean).sort().pop();
  const row=(d:any)=>'<tr><td>'+d.business_date+'</td><td>'+String(d.total_transactions||0)+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.cash_profit)+'</td><td>'+money(d.upi_profit)+'</td><td>'+money(d.credit_profit)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td><td>'+money(d.purchase_credit)+'</td><td>'+money(d.sales_returns)+'</td><td>'+money(d.purchase_returns)+'</td><td>'+money(d.debtor_payment_total)+'</td><td>'+money(d.debtor_payment_cash)+'</td><td>'+money(d.debtor_payment_upi)+'</td></tr>';
  const rows=selected?[selected]:recent;
- return '<section class="page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div><p class="muted">Latest 7 days are shown by default. Updates refresh automatically. '+(latest?'Last update: '+fmt(latest):'')+'</p><div class="table-wrap swipeable"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="18" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
+ return '<section class="page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div><p class="muted">Latest 7 days are shown by default. Updates refresh automatically. '+(latest?'Last update: '+fmt(latest):'')+'</p><div class="table-wrap swipeable reports-scroll"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="18" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
 }
 
 function workers(){
@@ -706,7 +707,7 @@ function returnForm(type:"purchase"|"sale"){
  f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:p.unit_type==="weight"?base*price/1000:base*price,payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render()});calc();
 }
 function bind(){
- document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{activeTab=x.dataset.nav||"dashboard";render()}));
+ document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
  document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
  const refreshBtn=document.querySelector<HTMLButtonElement>("#refresh");
  if(refreshBtn){
@@ -731,6 +732,7 @@ function bind(){
  if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history")bindHistory(); if(activeTab==="returns")bindReturns();
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
+ if(activeTab==="audit")document.querySelector("#auditDate")?.addEventListener("change",e=>{auditDate=(e.currentTarget as HTMLInputElement).value;render()});
  if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm);bindStockActions()}
  if(activeTab==="settings")bindSettings();
 }
@@ -745,12 +747,14 @@ function addSwipeHints(){
 function render(){
  if(!profile){login();return}
  const oldNav=document.querySelector<HTMLElement>(".bottom-nav");if(oldNav)bottomNavScrollLeft=oldNav.scrollLeft;
+ if(activeTab==="reports"){const oldReport=document.querySelector<HTMLElement>(".reports-scroll");if(oldReport)reportTableScrollLeft=oldReport.scrollLeft;}
  app.innerHTML=shell(activeTab);
  const view=document.querySelector("#view")!;
  view.innerHTML=activeTab==="dashboard"?dashboard():activeTab==="sale"?sale():activeTab==="cart"?cart():activeTab==="stock"?stock():activeTab==="returns"?returnsView():activeTab==="creditors"?creditorsView():activeTab==="debtors"?debtorsView():activeTab==="history"?history():activeTab==="today"?today():activeTab==="reports"?reports():activeTab==="workers"?workers():activeTab==="audit"?audit():settingsView();
  bind();
  const newNav=document.querySelector<HTMLElement>(".bottom-nav");if(newNav){newNav.scrollLeft=bottomNavScrollLeft;newNav.addEventListener("scroll",()=>{bottomNavScrollLeft=newNav.scrollLeft},{passive:true})}
  addSwipeHints();
+ if(activeTab==="reports"){const newReport=document.querySelector<HTMLElement>(".reports-scroll");if(newReport){newReport.scrollLeft=reportTableScrollLeft;newReport.addEventListener("scroll",()=>{reportTableScrollLeft=newReport.scrollLeft},{passive:true})}}
 }
 
 function splitSqlForMobile(sql:string,maxChars=18000){
