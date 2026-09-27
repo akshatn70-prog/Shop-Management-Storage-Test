@@ -13,49 +13,120 @@ if (!Number.isInteger(versionCode) || versionCode < 1) {
 
 let gradle = fs.readFileSync(gradlePath, "utf8");
 
+function findBlockEnd(text, openIndex) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let i = openIndex; i < text.length; i++) {
+    const ch = text[i];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+function ensureInsideBlock(text, blockName, insertion) {
+  const match = text.match(new RegExp(blockName + "\\s*\\{"));
+  if (!match || match.index === undefined) {
+    throw new Error(`Could not find ${blockName} in android/app/build.gradle.`);
+  }
+  const open = text.indexOf("{", match.index);
+  const close = findBlockEnd(text, open);
+  if (close < 0) throw new Error(`Could not find the end of ${blockName}.`);
+  return text.slice(0, close) + insertion + "\n" + text.slice(close);
+}
+
 gradle = gradle.replace(/applicationId\s+["']com\.akshat\.shopmanagement["']/g, 'applicationId "com.shopmanagement"');
 gradle = gradle.replace(/namespace\s+["']com\.akshat\.shopmanagement["']/g, 'namespace "com.shopmanagement"');
 
-if (!/applicationId\s+["']com\.shopmanagement["']/.test(gradle)) {
-  const defaultConfig = gradle.match(/defaultConfig\s*\{/);
-  if (!defaultConfig || defaultConfig.index === undefined) {
-    throw new Error("Could not find defaultConfig in android/app/build.gradle.");
-  }
-  const at = defaultConfig.index + defaultConfig[0].length;
-  gradle = gradle.slice(0, at) + '\n        applicationId "com.shopmanagement"' + gradle.slice(at);
+if (/applicationId\s+["']com\.shopmanagement["']/.test(gradle)) {
+  // Already present.
+} else {
+  gradle = ensureInsideBlock(gradle, "defaultConfig", '\n        applicationId "com.shopmanagement"');
 }
 
 if (/versionCode\s+\d+/.test(gradle)) {
   gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`);
 } else {
-  const defaultConfig = gradle.match(/defaultConfig\s*\{/);
-  const at = defaultConfig.index + defaultConfig[0].length;
-  gradle = gradle.slice(0, at) + `\n        versionCode ${versionCode}` + gradle.slice(at);
+  gradle = ensureInsideBlock(gradle, "defaultConfig", `\n        versionCode ${versionCode}`);
 }
 
 if (/versionName\s+["'][^"']+["']/.test(gradle)) {
   gradle = gradle.replace(/versionName\s+["'][^"']+["']/, `versionName "${versionName}"`);
 } else {
-  const defaultConfig = gradle.match(/defaultConfig\s*\{/);
-  const at = defaultConfig.index + defaultConfig[0].length;
-  gradle = gradle.slice(0, at) + `\n        versionName "${versionName}"` + gradle.slice(at);
+  gradle = ensureInsideBlock(gradle, "defaultConfig", `\n        versionName "${versionName}"`);
 }
-
-const signingBlock = `\nsigningConfigs {\n    release {\n        def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")\n        if (!keystorePath) throw new GradleException("ANDROID_KEYSTORE_PATH is not configured.")\n        storeFile file(keystorePath)\n        storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")\n        keyAlias System.getenv("ANDROID_KEY_ALIAS")\n        keyPassword System.getenv("ANDROID_KEY_PASSWORD")\n    }\n}\n`;
 
 if (!/signingConfigs\s*\{/.test(gradle)) {
-  const buildTypes = gradle.indexOf("buildTypes {");
-  if (buildTypes < 0) throw new Error("Could not find buildTypes in android/app/build.gradle.");
-  gradle = gradle.slice(0, buildTypes) + signingBlock + "\n" + gradle.slice(buildTypes);
+  const buildTypesMatch = gradle.match(/buildTypes\s*\{/);
+  if (!buildTypesMatch || buildTypesMatch.index === undefined) {
+    throw new Error("Could not find buildTypes in android/app/build.gradle.");
+  }
+
+  const signingBlock = `
+signingConfigs {
+    release {
+        def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+        if (!keystorePath) throw new GradleException("ANDROID_KEYSTORE_PATH is not configured.")
+        storeFile file(keystorePath)
+        storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        keyAlias System.getenv("ANDROID_KEY_ALIAS")
+        keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+    }
 }
 
-if (/release\s*\{[\s\S]*?signingConfig\s+signingConfigs\.release/.test(gradle)) {
-  // Already configured.
-} else if (/buildTypes\s*\{/.test(gradle)) {
-  gradle = gradle.replace(
-    /buildTypes\s*\{([\s\S]*?)\n\}/m,
-    (full, body) => `buildTypes {\n${body}\n    release {\n        signingConfig signingConfigs.release\n    }\n}`
-  );
+`;
+
+  gradle = gradle.slice(0, buildTypesMatch.index) + signingBlock + gradle.slice(buildTypesMatch.index);
+}
+
+const buildTypesMatch = gradle.match(/buildTypes\s*\{/);
+if (!buildTypesMatch || buildTypesMatch.index === undefined) {
+  throw new Error("Could not find buildTypes after signing configuration.");
+}
+
+const buildTypesOpen = gradle.indexOf("{", buildTypesMatch.index);
+const buildTypesClose = findBlockEnd(gradle, buildTypesOpen);
+if (buildTypesClose < 0) throw new Error("Could not find the end of buildTypes.");
+
+const buildTypesBody = gradle.slice(buildTypesOpen + 1, buildTypesClose);
+if (!/release\s*\{/.test(buildTypesBody)) {
+  gradle = gradle.slice(0, buildTypesClose) +
+    `
+    release {
+        signingConfig signingConfigs.release
+    }
+` +
+    gradle.slice(buildTypesClose);
+} else if (!/release\s*\{[\\s\\S]*?signingConfig\s+signingConfigs\.release/.test(buildTypesBody)) {
+  const releaseMatch = buildTypesBody.match(/release\s*\{/);
+  const releaseOpen = buildTypesOpen + 1 + releaseMatch.index + buildTypesBody.slice(releaseMatch.index).indexOf("{");
+  const releaseClose = findBlockEnd(gradle, releaseOpen);
+  gradle = gradle.slice(0, releaseClose) +
+    "\n        signingConfig signingConfigs.release\n" +
+    gradle.slice(releaseClose);
 }
 
 fs.writeFileSync(gradlePath, gradle);
