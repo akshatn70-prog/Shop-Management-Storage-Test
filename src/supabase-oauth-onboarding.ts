@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
+import { App } from "@capacitor/app";
 
 const RENDER_BASE="https://shop-management-oauth.onrender.com";
 const PRODUCTION_APP_URL="https://shop-management-storage-test.onrender.com";
