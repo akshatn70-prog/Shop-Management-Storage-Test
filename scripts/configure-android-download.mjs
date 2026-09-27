@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const javaDir = "android/app/src/main/java/com/akshat/shopmanagement";
+const javaDir = "android/app/src/main/java/com/shopmanagement";
 const pluginPath = path.join(javaDir, "DownloadFilePlugin.java");
 const activityPath = path.join(javaDir, "MainActivity.java");
 
@@ -10,7 +10,85 @@ if (!fs.existsSync(activityPath)) {
 }
 
 fs.mkdirSync(javaDir, { recursive: true });
-fs.writeFileSync(pluginPath, "package com.akshat.shopmanagement;\n\nimport android.content.ContentResolver;\nimport android.content.ContentValues;\nimport android.net.Uri;\nimport android.os.Build;\nimport android.os.Environment;\nimport android.provider.MediaStore;\n\nimport com.getcapacitor.JSObject;\nimport com.getcapacitor.Plugin;\nimport com.getcapacitor.PluginCall;\nimport com.getcapacitor.PluginMethod;\nimport com.getcapacitor.annotation.CapacitorPlugin;\n\nimport java.io.OutputStream;\nimport java.nio.charset.StandardCharsets;\n\n@CapacitorPlugin(name = \"DownloadFile\")\npublic class DownloadFilePlugin extends Plugin {\n\n    @PluginMethod\n    public void saveToDownloads(PluginCall call) {\n        String data = call.getString(\"data\");\n        String fileName = call.getString(\"fileName\", \"shop-management-final.sql\");\n\n        if (data == null) {\n            call.reject(\"File data is required.\");\n            return;\n        }\n\n        if (fileName == null || fileName.trim().isEmpty()) {\n            fileName = \"shop-management-final.sql\";\n        }\n\n        fileName = fileName.trim();\n\n        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {\n            call.reject(\"This Android version is not supported for direct Downloads saving.\");\n            return;\n        }\n\n        ContentResolver resolver = getContext().getContentResolver();\n        ContentValues values = new ContentValues();\n        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);\n        values.put(MediaStore.Downloads.MIME_TYPE, \"application/sql\");\n        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);\n        values.put(MediaStore.Downloads.IS_PENDING, 1);\n\n        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);\n        if (uri == null) {\n            call.reject(\"Android could not create the file in Downloads.\");\n            return;\n        }\n\n        try {\n            try (OutputStream output = resolver.openOutputStream(uri)) {\n                if (output == null) {\n                    throw new IllegalStateException(\"Could not open the Downloads file.\");\n                }\n                output.write(data.getBytes(StandardCharsets.UTF_8));\n                output.flush();\n            }\n\n            ContentValues ready = new ContentValues();\n            ready.put(MediaStore.Downloads.IS_PENDING, 0);\n            resolver.update(uri, ready, null, null);\n\n            JSObject result = new JSObject();\n            result.put(\"fileName\", fileName);\n            result.put(\"location\", \"Download/\" + fileName);\n            call.resolve(result);\n        } catch (Exception error) {\n            resolver.delete(uri, null, null);\n            call.reject(\"Could not save the SQL file to Downloads: \" + error.getMessage());\n        }\n    }\n}\n" + "\n");
+fs.writeFileSync(pluginPath, `package com.shopmanagement;
+
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+
+@CapacitorPlugin(name = "DownloadFile")
+public class DownloadFilePlugin extends Plugin {
+
+    @PluginMethod
+    public void saveToDownloads(PluginCall call) {
+        String data = call.getString("data");
+        String fileName = call.getString("fileName", "shop-management-final.sql");
+
+        if (data == null) {
+            call.reject("File data is required.");
+            return;
+        }
+
+        if (fileName == null || fileName.trim().isEmpty()) {
+            fileName = "shop-management-final.sql";
+        }
+
+        fileName = fileName.trim();
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("This Android version is not supported for direct Downloads saving.");
+            return;
+        }
+
+        ContentResolver resolver = getContext().getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, "application/sql");
+        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) {
+            call.reject("Android could not create the file in Downloads.");
+            return;
+        }
+
+        try {
+            try (OutputStream output = resolver.openOutputStream(uri)) {
+                if (output == null) {
+                    throw new IllegalStateException("Could not open the Downloads file.");
+                }
+                output.write(data.getBytes(StandardCharsets.UTF_8));
+                output.flush();
+            }
+
+            ContentValues ready = new ContentValues();
+            ready.put(MediaStore.Downloads.IS_PENDING, 0);
+            resolver.update(uri, ready, null, null);
+
+            JSObject result = new JSObject();
+            result.put("fileName", fileName);
+            result.put("location", "Download/" + fileName);
+            call.resolve(result);
+        } catch (Exception error) {
+            resolver.delete(uri, null, null);
+            call.reject("Could not save the SQL file to Downloads: " + error.getMessage());
+        }
+    }
+}
+`);
 
 let activity = fs.readFileSync(activityPath, "utf8");
 
@@ -18,7 +96,7 @@ if (!activity.includes("DownloadFilePlugin")) {
   const packageMatch = activity.match(/^package [^;]+;/m);
   if (!packageMatch) throw new Error("Could not find the Java package declaration.");
 
-  const importLine = "import com.akshat.shopmanagement.DownloadFilePlugin;\n";
+  const importLine = "import com.shopmanagement.DownloadFilePlugin;\n";
   activity = activity.slice(0, packageMatch.index + packageMatch[0].length) +
     "\n" + importLine +
     activity.slice(packageMatch.index + packageMatch[0].length);
@@ -41,4 +119,4 @@ if (!activity.includes("import android.os.Bundle;")) {
 }
 
 fs.writeFileSync(activityPath, activity);
-console.log("Configured native Android SQL download to the public Downloads folder.");
+console.log("Configured native Android SQL download for com.shopmanagement.");
