@@ -65,6 +65,25 @@ function encryptRefreshToken(token){
   const tag=cipher.getAuthTag();
   return "v1:"+Buffer.concat([iv,tag,enc]).toString("base64url");
 }
+function decryptRefreshToken(value){
+  const raw=Buffer.from(String(value||"").replace(/^v1:/,""),"base64url");
+  if(raw.length<28)throw new Error("Stored Supabase OAuth refresh token is invalid.");
+  const iv=raw.subarray(0,12),tag=raw.subarray(12,28),enc=raw.subarray(28);
+  const decipher=crypto.createDecipheriv("aes-256-gcm",centralEncryptionKey(),iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(enc),decipher.final()]).toString("utf8");
+}
+const migrationsDir=path.join(__dirname,"migrations");
+function loadMigrations(){
+  if(!fs.existsSync(migrationsDir))return [];
+  return fs.readdirSync(migrationsDir)
+    .filter(name=>/^\\d+_[A-Za-z0-9_-]+\\.sql$/.test(name))
+    .map(name=>{
+      const m=name.match(/^(\\d+)_([A-Za-z0-9_-]+)\\.sql$/);
+      return {version:Number(m[1]),name:m[2],sql:fs.readFileSync(path.join(migrationsDir,name),"utf8")};
+    })
+    .sort((a,b)=>a.version-b.version);
+}
 async function centralRequest(pathname,options={}){
   if(!CENTRAL_SUPABASE_URL||!CENTRAL_SUPABASE_SERVICE_ROLE_KEY)
     throw new Error("Central Supabase environment variables are not configured.");
@@ -83,7 +102,7 @@ async function centralRequest(pathname,options={}){
   if(!r.ok)throw new Error((data?.message||data?.error||data?.hint||"Central Supabase request failed")+" (HTTP "+r.status+")");
   return data;
 }
-async function saveShopInstallation(ref,project,refreshToken){
+async function saveShopInstallation(ref,project,refreshToken,databaseVersion=0){
   const encryptedRefreshToken=encryptRefreshToken(refreshToken);
   await centralRequest("/rest/v1/shop_installations?on_conflict=project_ref",{
     method:"POST",
@@ -92,11 +111,88 @@ async function saveShopInstallation(ref,project,refreshToken){
       project_ref:ref,
       project_url:"https://"+ref+".supabase.co",
       encrypted_refresh_token:encryptedRefreshToken,
-      database_version:0,
+      database_version:databaseVersion,
       status:"active",
       updated_at:new Date().toISOString()
     })
   });
+}
+async function refreshManagementToken(refreshToken){
+  const basic=Buffer.from(OAUTH_CLIENT_ID+":"+OAUTH_CLIENT_SECRET).toString("base64");
+  const r=await fetch("https://api.supabase.com/v1/oauth/token",{
+    method:"POST",
+    headers:{Authorization:"Basic "+basic,"Content-Type":"application/x-www-form-urlencoded",Accept:"application/json"},
+    body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken})
+  });
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(data?.error_description||data?.error||"Supabase OAuth refresh failed (HTTP "+r.status+").");
+  if(!data?.access_token)throw new Error("Supabase OAuth refresh returned no access token.");
+  return data;
+}
+async function getCentralInstallation(ref){
+  const rows=await centralRequest("/rest/v1/shop_installations?project_ref=eq."+encodeURIComponent(ref)+"&select=*&limit=1");
+  return Array.isArray(rows)&&rows[0]?rows[0]:null;
+}
+async function updateCentralInstallation(ref,patch){
+  await centralRequest("/rest/v1/shop_installations?project_ref=eq."+encodeURIComponent(ref),{
+    method:"PATCH",
+    headers:{Prefer:"return=minimal"},
+    body:JSON.stringify({...patch,updated_at:new Date().toISOString()})
+  });
+}
+async function runManagementQuery(ref,token,query){
+  return await supa("/v1/projects/"+encodeURIComponent(ref)+"/database/query",token,{
+    method:"POST",
+    body:JSON.stringify({query,read_only:false})
+  });
+}
+async function verifyOwnerAtProject(projectUrl,publishableKey,userAccessToken){
+  const base=String(projectUrl||"").replace(/\\/$/,"");
+  let u;
+  try{u=new URL(base)}catch{throw new Error("Invalid Supabase project URL.");}
+  const ref=u.hostname.split(".")[0];
+  if(!/^[a-z]{20}$/.test(ref))throw new Error("Invalid Supabase project reference.");
+  const userRes=await fetch(base+"/auth/v1/user",{
+    headers:{apikey:publishableKey,Authorization:"Bearer "+userAccessToken,Accept:"application/json"}
+  });
+  const user=await userRes.json().catch(()=>({}));
+  if(!userRes.ok||!user?.id)throw new Error("Your Supabase login session is invalid or expired.");
+  const profileRes=await fetch(base+"/rest/v1/profiles?select=id,role,is_active,shop_id&id=eq."+encodeURIComponent(user.id)+"&limit=1",{
+    headers:{apikey:publishableKey,Authorization:"Bearer "+userAccessToken,Accept:"application/json"}
+  });
+  const profiles=await profileRes.json().catch(()=>[]);
+  if(!profileRes.ok)throw new Error("Could not verify the owner account in the connected database.");
+  const p=Array.isArray(profiles)?profiles[0]:null;
+  if(!p||p.role!=="owner"||p.is_active!==true)throw new Error("Owner access is required to update the database.");
+  return {ref,user,p};
+}
+async function applyPendingMigrations(ref,managementToken,currentVersion){
+  const migrations=loadMigrations();
+  let version=Number(currentVersion||0);
+  for(const migration of migrations){
+    if(migration.version<=version)continue;
+    await runManagementQuery(ref,managementToken,migration.sql);
+    await centralRequest("/rest/v1/shop_migrations?on_conflict=version",{
+      method:"POST",
+      headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify({version:migration.version,name:migration.name,sql:migration.sql})
+    });
+    version=migration.version;
+    await updateCentralInstallation(ref,{database_version:version,status:"active",last_migration_at:new Date().toISOString(),last_verified_at:new Date().toISOString()});
+  }
+  return version;
+}
+async function ensureBaselineMigration(ref,managementToken){
+  const migrations=loadMigrations();
+  const baseline=migrations.find(x=>x.version===1);
+  if(!baseline)throw new Error("Migration baseline is missing from the server.");
+  await runManagementQuery(ref,managementToken,baseline.sql);
+  await centralRequest("/rest/v1/shop_migrations?on_conflict=version",{
+    method:"POST",
+    headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+    body:JSON.stringify({version:baseline.version,name:baseline.name,sql:baseline.sql})
+  });
+  return baseline.version;
 }
 function body(req){
   return new Promise((resolve,reject)=>{
@@ -309,9 +405,40 @@ const server=http.createServer(async(req,res)=>{
       }
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
-      await saveShopInstallation(ref,project,s.tokens.refresh_token);
+      const baselineVersion=await ensureBaselineMigration(ref,token);
+      await saveShopInstallation(ref,project,s.tokens.refresh_token,baselineVersion);
       const setup_ticket=makeSetupTicket({ref,access_token:token,created_at:Date.now()});
       return json(res,200,{ok:true,url,key,setup_ticket,project:{ref:project.ref,name:project.name}});
+    }
+    if(u.pathname==="/api/database/verify-and-update" && req.method==="POST"){
+      const b=await body(req);
+      const projectUrl=String(b.supabase_url||"").trim();
+      const publishableKey=String(b.publishable_key||"").trim();
+      const userAccessToken=String(b.access_token||"").trim();
+      if(!projectUrl||!publishableKey||!userAccessToken)return json(res,400,{error:"Supabase project connection and active login session are required."});
+      const owner=await verifyOwnerAtProject(projectUrl,publishableKey,userAccessToken);
+      const installation=await getCentralInstallation(owner.ref);
+      if(!installation)return json(res,404,{error:"This Supabase project is not registered with Shop Management. Reconnect Supabase from the owner registration flow."});
+      let management;
+      try{
+        const refreshToken=decryptRefreshToken(installation.encrypted_refresh_token);
+        management=await refreshManagementToken(refreshToken);
+      }catch(e){
+        await updateCentralInstallation(owner.ref,{status:"error"});
+        throw e;
+      }
+      if(management.refresh_token){
+        await updateCentralInstallation(owner.ref,{encrypted_refresh_token:encryptRefreshToken(management.refresh_token),status:"active"});
+      }
+      try{
+        const before=Number(installation.database_version||0);
+        const after=await applyPendingMigrations(owner.ref,management.access_token,before);
+        await updateCentralInstallation(owner.ref,{database_version:after,status:"active",last_verified_at:new Date().toISOString()});
+        return json(res,200,{ok:true,updated:after>before,previous_version:before,database_version:after,applied:loadMigrations().filter(x=>x.version>before&&x.version<=after).map(x=>({version:x.version,name:x.name}))});
+      }catch(e){
+        await updateCentralInstallation(owner.ref,{status:"error"});
+        throw e;
+      }
     }
     if(u.pathname==="/api/oauth/create-owner" && req.method==="POST"){
       const b=await body(req),sessionId=String(b.session_id||""),ticket=String(b.setup_ticket||""),email=String(b.email||"").trim().toLowerCase(),password=String(b.password||""),name=String(b.name||"").trim();
