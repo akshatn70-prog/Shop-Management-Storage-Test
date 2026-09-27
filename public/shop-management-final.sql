@@ -4585,3 +4585,75 @@ alter table public.products drop constraint if exists products_name_key;
 create unique index if not exists products_active_name_uidx
 on public.products(lower(btrim(name)))
 where is_active=true;
+
+
+-- ============================================================
+-- V3: PRODUCT DELETE IS PERMANENT
+-- ============================================================
+-- Product deletion is a separate command from retention cleanup.
+-- Historical sales/purchases/returns keep product_name_snapshot and their
+-- product_id is set to NULL by the existing ON DELETE SET NULL foreign keys.
+create or replace function public.delete_product(p_product_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+  p public.products;
+begin
+  if not (select public.is_owner()) then
+    raise exception 'Owner only';
+  end if;
+
+  select *
+    into p
+  from public.products
+  where id=p_product_id
+  for update;
+
+  if not found then
+    raise exception 'Product not found or already deleted';
+  end if;
+
+  delete from public.products
+  where id=p_product_id;
+end;
+$$;
+
+revoke all on function public.delete_product(uuid) from public,anon;
+grant execute on function public.delete_product(uuid) to authenticated;
+
+alter table public.products
+  drop constraint if exists products_name_key;
+
+create unique index if not exists products_active_name_uidx
+on public.products(lower(btrim(name)))
+where is_active=true;
+
+
+-- ============================================================
+-- V4: AUTOMATIC STORAGE RETENTION
+-- ============================================================
+-- This is completely separate from product deletion.
+-- Existing retention function remains responsible for:
+--   sales                 -> 90 days
+--   sale_transactions     -> 90 days when no longer referenced
+--   inventory purchases  -> 1 year, excluding pre-stock/unpaid credit
+--   audit logs             -> 30 days
+--   settled credit ledger -> 7 days after settlement
+-- Products, returns, debtors/creditors, and permanent financial summaries
+-- are NOT deleted by this job.
+--
+-- Runs every day at 01:00 Asia/Kolkata = 19:30 UTC.
+create extension if not exists pg_cron;
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname='shop-management-storage-retention';
+
+select cron.schedule(
+  'shop-management-storage-retention',
+  '30 19 * * *',
+  $$select public.run_storage_retention_cleanup();$$
+);
