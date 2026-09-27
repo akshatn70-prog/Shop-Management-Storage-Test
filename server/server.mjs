@@ -68,7 +68,7 @@ function encryptRefreshToken(token){
 async function centralRequest(pathname,options={}){
   if(!CENTRAL_SUPABASE_URL||!CENTRAL_SUPABASE_SERVICE_ROLE_KEY)
     throw new Error("Central Supabase environment variables are not configured.");
-  const r=await fetch(CENTRAL_SUPABASE_URL.replace(/\\/$/,"")+pathname,{
+  const r=await fetch(CENTRAL_SUPABASE_URL.replace(/\/$/,"")+pathname,{
     ...options,
     headers:{
       apikey:CENTRAL_SUPABASE_SERVICE_ROLE_KEY,
