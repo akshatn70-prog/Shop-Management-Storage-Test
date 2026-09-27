@@ -85,8 +85,8 @@ function buildDemo(){
    if(i<90){
      for(let j=0;j<count;j++){
        const p=ps[(i+j)%ps.length], qty=p.unit_type==="weight"?500+(j*250):1+(j%3);
-       const total=qty*(p.unit_type==="weight"?p.selling_price_per_base_unit/1000:p.selling_price_per_base_unit);
-       const gp=total-(qty*(p.unit_type==="weight"?p.purchase_price_per_base_unit/1000:p.purchase_price_per_base_unit));
+       const total=saleTotal(p,qty,p.selling_price_per_base_unit);
+       const gp=total-saleTotal(p,qty,p.purchase_price_per_base_unit);
        const mode=modes[(i+j)%modes.length];
        const ca=mode==="cash"?total:mode==="split"?Math.round(total*.45):0;
        const up=mode==="upi"?total:mode==="split"?total-ca:0;
@@ -101,7 +101,7 @@ function buildDemo(){
    ds.push({shop_id:owner.shop_id,business_date:localDate(date),total_transactions:count||Math.max(1,2+(i%3)),total_revenue:revenue,total_profit:profit,cash_sales:cash,upi_sales:upi,credit_sales:credit,cash_profit:Math.round(profit*(cash/Math.max(revenue,1))),upi_profit:Math.round(profit*(upi/Math.max(revenue,1))),credit_profit:Math.round(profit*(credit/Math.max(revenue,1))),creditor_amount:credit,purchase_cash:0,purchase_upi:0,purchase_credit:0,total_purchases:0,debtor_payment_cash:0,debtor_payment_upi:0,debtor_payment_total:0});
    if(i<365){
      const pd=new Date(date);pd.setHours(8,10,0,0);
-     const p=ps[i%ps.length], qty=p.unit_type==="weight"?2500+(i%5)*500:10+(i%7), cost=qty*(p.unit_type==="weight"?p.purchase_price_per_base_unit/1000:p.purchase_price_per_base_unit), mode=i%4===0?"credit":i%3===0?"split":i%2?"upi":"cash";
+     const p=ps[i%ps.length], qty=p.unit_type==="weight"?2500+(i%5)*500:10+(i%7), cost=saleTotal(p,qty,p.purchase_price_per_base_unit), mode=i%4===0?"credit":i%3===0?"split":i%2?"upi":"cash";
      const pc=mode==="cash"?cost:mode==="split"?cost*.5:0, pu=mode==="upi"?cost:mode==="split"?cost*.5:0, pcr=mode==="credit"?cost:0;
      const debtor=pcr>0?db[i%db.length]:null;
      pur.push({id:"dp"+i,product_id:p.id,product_name_snapshot:p.name,quantity_base:p.unit_type==="weight"?qty:qty,quantity_display:qty,purchase_unit:p.unit_type,purchase_price_per_base_unit:p.purchase_price_per_base_unit,total_cost:cost,purchased_at:pd.toISOString(),purchased_by:i%2?worker.id:owner.id,profiles:{full_name:i%2?"Demo Worker":"Demo Owner"},payment_mode:mode,cash_amount:pc,upi_amount:pu,credit_amount:pcr,credit_paid:0,pre_stock:false,supplier_name:pcr>0?debtor?.name:"",debtor_id:debtor?.id||null});
@@ -393,7 +393,7 @@ function bindCart(){
      const p=products.find(p=>p.id===x.product_id)!;
      const itemTotal=saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0);
      p.current_stock_base-=x.quantity_base;
-     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(p.unit_type==="weight"?((x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base/1000):((x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base)),cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
+     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0)-saleTotal(p,Number(x.quantity_base)||0,Number(p.purchase_price_per_base_unit)||0),cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
     }
     if(cr>0&&crid)ledger.unshift({id:"cart-ledger-"+Date.now(),creditor_id:crid,type:"credit_sale",amount:cr,payment_mode:mode.value,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
    }else{
