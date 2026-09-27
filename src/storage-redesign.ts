@@ -219,6 +219,180 @@ function bindStockActions(){
   }catch(err){notify(errorMessage(err),"error")}
  }));
 }
+function bindSale(){
+ const f=document.querySelector<HTMLFormElement>("#saleForm")!,sel=f.elements.namedItem("product") as HTMLSelectElement,qty=f.elements.namedItem("qty") as HTMLInputElement,price=f.elements.namedItem("price") as HTMLInputElement,unit=f.elements.namedItem("unit") as HTMLSelectElement,mode=f.elements.namedItem("mode") as HTMLSelectElement;
+ const update=(resetPrice=true)=>{const p=products.find(x=>x.id===sel.value);if(!p)return;if(resetPrice)price.value=String(p.selling_price_per_base_unit);price.readOnly=profile?.role==="worker"&&settings.workers_can_modify_selling_price!==true;unit.disabled=p.unit_type==="piece";if(resetPrice)unit.value=p.unit_type==="piece"?"piece":"grams";const n=Number(qty.value)||0,base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n,total=base*Number(price.value||0);document.querySelector("#saleTotal")!.textContent="Total: "+money(total);document.querySelectorAll<HTMLElement>("#saleProducts .product-card").forEach(x=>x.classList.toggle("selected",x.dataset.product===p.id));if(mode.value==="cash"){(f.elements.namedItem("cash") as HTMLInputElement).value=total.toFixed(2)}if(mode.value==="upi"){(f.elements.namedItem("upi") as HTMLInputElement).value=total.toFixed(2)}};
+ const renderMatches=(q:string)=>{const root=document.querySelector("#saleProducts")!;const query=q.trim().toLowerCase();const matches=query?products.filter(p=>p.name.toLowerCase().includes(query)):[];root.innerHTML=matches.map(p=>'<button class="product-card" data-product="'+p.id+'"><b>'+esc(p.name)+'</b><span>'+p.current_stock_base+' available</span><strong>'+money(p.selling_price_per_base_unit)+'</strong></button>').join("")+(query&&!matches.length?'<div class="notice full">No matching product.</div>':"");root.querySelectorAll<HTMLElement>("[data-product]").forEach(x=>x.addEventListener("click",()=>{sel.value=x.dataset.product!;update()}))};
+ document.querySelector("#saleSearchBtn")?.addEventListener("click",()=>renderMatches((document.querySelector("#saleSearch") as HTMLInputElement).value));
+ document.querySelector("#saleSearch")?.addEventListener("input",e=>renderMatches((e.target as HTMLInputElement).value));
+ sel.addEventListener("change",()=>update(true));qty.addEventListener("input",()=>update(false));price.addEventListener("input",()=>update(false));unit.addEventListener("change",()=>update(false));
+ document.querySelector("#saleProducts")?.addEventListener("click",e=>{const b=(e.target as HTMLElement).closest<HTMLElement>("[data-product]");if(b){sel.value=b.dataset.product!;update()}});
+ const saleCreditor=f.elements.namedItem("creditor") as HTMLSelectElement;
+saleCreditor.addEventListener("change",async()=>{if(saleCreditor.value!=="__new__")return;const n=prompt("Creditor name");if(!n?.trim()){saleCreditor.value="";return}const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){saleCreditor.value="";return}try{const c=await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}catch(err){saleCreditor.value="";notify(errorMessage(err),"error")}});
+mode.addEventListener("change",()=>{const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";if(!cr) (f.elements.namedItem("creditor") as HTMLSelectElement).value="";document.querySelector("#cashBox")?.classList.toggle("hidden",!split);document.querySelector("#upiBox")?.classList.toggle("hidden",!split);document.querySelector("#creditBox")?.classList.toggle("hidden",v!=="credit_split");document.querySelector("#creditorBox")?.classList.toggle("hidden",!cr);update(false)});update();
+ f.addEventListener("submit",async e=>{e.preventDefault();const p=products.find(x=>x.id===sel.value)!;const n=Number(qty.value),base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n,total=base*Number(price.value),v=mode.value;let cash=Number((f.elements.namedItem("cash") as HTMLInputElement).value)||0,upi=Number((f.elements.namedItem("upi") as HTMLInputElement).value)||0,credit=Number((f.elements.namedItem("credit") as HTMLInputElement).value)||0;const cr=(f.elements.namedItem("creditor") as HTMLSelectElement).value||null;if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");if(v==="cash"){cash=total;upi=0;credit=0}if(v==="upi"){cash=0;upi=total;credit=0}if(v==="credit"){cash=0;upi=0;credit=total}if(v==="split"&&Math.abs(cash+upi-total)>.01)return notify("Cash + UPI must equal total.","error");if(v==="credit_split"&&(credit<=0||Math.abs(cash+upi+credit-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");if((v==="credit"||v==="credit_split")&&!cr)return notify("Select a creditor.","error");try{await saveSale({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value)},v,cash,upi,credit,cr);notify("Sale completed.","success");await loadData();render()}catch(err){notify(errorMessage(err),"error")}})
+}
+
+function bindCart(){
+ const add=document.querySelector<HTMLFormElement>("#cartAdd");
+ if(!add)return;
+ const sel=add.elements.namedItem("product") as HTMLSelectElement;
+ const qty=add.elements.namedItem("qty") as HTMLInputElement;
+ const unit=add.elements.namedItem("unit") as HTMLSelectElement;
+ const price=add.elements.namedItem("price") as HTMLInputElement;
+ const search=document.querySelector<HTMLInputElement>("#cartSearch");
+ const searchBtn=document.querySelector<HTMLButtonElement>("#cartSearchBtn");
+ const root=document.querySelector<HTMLElement>("#cartProducts");
+
+ const update=(resetPrice=true)=>{
+  const p=products.find(x=>x.id===sel.value);
+  if(!p)return;
+  if(resetPrice)price.value=String(p.selling_price_per_base_unit);
+  if(resetPrice)unit.value=p.unit_type==="piece"?"piece":"grams";
+  const n=Number(qty.value)||0;
+  const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
+  const preview=document.querySelector("#cartPreview");
+  if(preview)preview.textContent="Preview: "+p.name+" × "+n+" = "+money(base*Number(price.value));
+  root?.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(x=>x.classList.toggle("selected",x.dataset.cartProduct===p.id));
+ };
+
+ const renderMatches=()=>{
+  if(!root||!search)return;
+  const query=search.value.trim().toLowerCase();
+  if(!query){root.innerHTML="";return}
+  const matches=products.filter(p=>p.name.toLowerCase().includes(query));
+  root.innerHTML=matches.map(p=>'<button type="button" class="product-card" data-cart-product="'+p.id+'"><b>'+esc(p.name)+'</b><span>'+p.current_stock_base+' available</span><strong>'+money(p.selling_price_per_base_unit)+'</strong></button>').join("")+
+   (matches.length?"":'<div class="notice full">No matching product.</div>');
+  root.querySelectorAll<HTMLElement>("[data-cart-product]").forEach(card=>{
+   card.addEventListener("click",e=>{
+    e.preventDefault();
+    sel.value=card.dataset.cartProduct!;
+    update();
+   });
+  });
+ };
+
+ if(search){
+  search.addEventListener("input",renderMatches);
+  search.addEventListener("keyup",renderMatches);
+  search.addEventListener("search",renderMatches);
+  search.addEventListener("change",renderMatches);
+ }
+ searchBtn?.addEventListener("click",e=>{e.preventDefault();renderMatches()});
+ search?.form?.addEventListener("submit",e=>{e.preventDefault();renderMatches()});
+
+ sel.addEventListener("change",()=>update(true));
+ qty.addEventListener("input",()=>update(false));
+ unit.addEventListener("change",()=>update(false));
+ price.addEventListener("input",()=>update(false));
+ update(true);
+
+ add.addEventListener("submit",e=>{
+  e.preventDefault();
+  const p=products.find(x=>x.id===sel.value);
+  if(!p)return notify("Select a product.","error");
+  const n=Number(qty.value);
+  const base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n;
+  if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");
+  const existing=cartItems.find(x=>x.product_id===p.id);
+  if(existing){
+   existing.quantity_base+=base;
+   existing.quantity_display+=n;
+   existing.sold_unit=unit.value;
+   existing.selling_price_per_base_unit=Number(price.value);
+   existing.product_name_snapshot=p.name;
+   existing.purchase_price_per_base_unit=p.purchase_price_per_base_unit;
+   notify("Product already in cart — quantity updated.","success");
+  }else{
+   cartItems.push({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value),product_name_snapshot:p.name,purchase_price_per_base_unit:p.purchase_price_per_base_unit});
+   notify("Added to cart.","success");
+  }
+  render();
+ });
+
+ document.querySelectorAll<HTMLButtonElement>(".delete-cart").forEach(b=>b.addEventListener("click",()=>{
+  cartItems.splice(Number(b.dataset.i),1);render();
+ }));
+ document.querySelectorAll<HTMLButtonElement>(".edit-cart").forEach(b=>b.addEventListener("click",()=>{
+  const i=Number(b.dataset.i),x=cartItems[i],p=products.find(p=>p.id===x.product_id)!;
+  const q=Number(prompt("Quantity",String(x.quantity_display)));
+  if(!q||q<=0)return;
+  const base=p.unit_type==="piece"?q:x.sold_unit==="kg"?q*1000:q;
+  if(base>p.current_stock_base)return notify("Insufficient stock.","error");
+  const oldTotal=base*Number(x.selling_price_per_base_unit);
+  const editedTotal=Number(prompt("Total money for this item",oldTotal.toFixed(2)));
+  if(!Number.isFinite(editedTotal)||editedTotal<0)return;
+  x.quantity_display=q;x.quantity_base=base;x.selling_price_per_base_unit=base>0?editedTotal/base:0;render();
+ }));
+
+ const pay=document.querySelector<HTMLFormElement>("#cartPay")!;
+ const mode=pay.elements.namedItem("mode") as HTMLSelectElement;
+ const cash=pay.elements.namedItem("cash") as HTMLInputElement;
+ const upi=pay.elements.namedItem("upi") as HTMLInputElement;
+ const credit=pay.elements.namedItem("credit") as HTMLInputElement;
+ let total=cartItems.reduce((a,x)=>a+x.quantity_base*x.selling_price_per_base_unit,0);
+ const toggle=()=>{
+  const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";
+  document.querySelector("#cartCashBox")?.classList.toggle("hidden",!split);
+  document.querySelector("#cartUpiBox")?.classList.toggle("hidden",!split);
+  document.querySelector("#cartCreditBox")?.classList.toggle("hidden",v!=="credit_split");
+  document.querySelector("#cartCreditorBox")?.classList.toggle("hidden",!cr);
+  if(v==="cash"){cash.value=total.toFixed(2);upi.value="0";credit.value="0"}
+  if(v==="upi"){cash.value="0";upi.value=total.toFixed(2);credit.value="0"}
+  if(v==="credit"){cash.value="0";upi.value="0";credit.value=total.toFixed(2)}
+ };
+ const cartCreditor=pay.elements.namedItem("creditor") as HTMLSelectElement;
+ cartCreditor.addEventListener("change",async()=>{
+  if(cartCreditor.value!=="__new__")return;
+  const n=prompt("Creditor name");if(!n?.trim()){cartCreditor.value="";return}
+  const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){cartCreditor.value="";return}
+  try{await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}
+  catch(err){cartCreditor.value="";notify(errorMessage(err),"error")}
+ });
+ mode.addEventListener("change",()=>{const v=mode.value;if(v!=="credit"&&v!=="credit_split")cartCreditor.value="";toggle()});toggle();
+ pay.addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(!cartItems.length)return notify("Add items first.","error");
+  // Normalize older carts that may already contain the same product more than once.
+  const merged:any[]=[];
+  for(const x of cartItems){
+   if(!x?.product_id||!products.some(p=>p.id===x.product_id))return notify("A cart item is no longer available. Delete it and add the product again.","error");
+   const existing=merged.find(y=>y.product_id===x.product_id);
+   if(existing){
+    existing.quantity_base+=Number(x.quantity_base)||0;
+    existing.quantity_display+=Number(x.quantity_display)||0;
+   }else{
+    merged.push({...x});
+   }
+  }
+  cartItems=merged;
+  total=cartItems.reduce((a,x)=>a+(Number(x.quantity_base)||0)*(Number(x.selling_price_per_base_unit)||0),0);
+  if(!cartItems.length)return notify("Add items first.","error");
+  let c=Number(cash.value)||0,u=Number(upi.value)||0,cr=Number(credit.value)||0;
+  if(mode.value==="cash"){c=total;u=0;cr=0}
+  if(mode.value==="upi"){c=0;u=total;cr=0}
+  if(mode.value==="credit"){c=0;u=0;cr=total}
+  if(mode.value==="split"&&Math.abs(c+u-total)>.01)return notify("Cash + UPI must equal total.","error");
+  if(mode.value==="credit_split"&&(cr<=0||Math.abs(c+u+cr-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");
+  const crSelect=pay.elements.namedItem("creditor") as HTMLSelectElement,crid=crSelect.value==="__new__"?null:crSelect.value||null;
+  if((mode.value==="credit"||mode.value==="credit_split")&&!crid)return notify("Select a creditor.","error");
+  try{
+   if(demo){
+    for(const x of cartItems){
+     const p=products.find(p=>p.id===x.product_id)!;
+     const itemTotal=x.quantity_base*x.selling_price_per_base_unit;
+     p.current_stock_base-=x.quantity_base;
+     sales.unshift({...x,id:"cart-"+Date.now()+Math.random(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:itemTotal,gross_profit:(x.selling_price_per_base_unit-p.purchase_price_per_base_unit)*x.quantity_base,cash_amount:c*(itemTotal/total),upi_amount:u*(itemTotal/total),credit_amount:cr*(itemTotal/total),payment_mode:mode.value,voided:false,products:{name:p.name},profiles:{full_name:profile!.full_name}});
+    }
+    if(cr>0&&crid)ledger.unshift({id:"cart-ledger-"+Date.now(),creditor_id:crid,type:"credit_sale",amount:cr,payment_mode:mode.value,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
+   }else{
+    const r=await supabase!.rpc("complete_cart_sale",{p_worker_id:profile!.id,p_items:cartItems,p_payment_mode:mode.value,p_cash_amount:c,p_upi_amount:u,p_credit_amount:cr,p_creditor_id:crid});
+    if(r.error)throw r.error;
+   }
+   cartItems=[];notify("Cart sale completed.","success");await loadData();render();
+  }catch(err){notify(errorMessage(err),"error")}
+ });
+}
 
 function productForm(){
  const h=document.querySelector("#stockForm")!;
