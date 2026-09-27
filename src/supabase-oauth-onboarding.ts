@@ -16,18 +16,134 @@ function localConnection(){
 }
 const CONFIRM_FLAG="shop_management_email_confirmed";
 
-const APP_VERSION="1.0.0";
 const UPDATE_REPO="geminiusage143-lab/Shop-Management-Storage-Test";
 
 function compareAppVersions(a:string,b:string){
   const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
   const pb=b.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
+
   for(let i=0;i<3;i++){
-    const av=pa[i]||0,bv=pb[i]||0;
+    const av=pa[i]||0;
+    const bv=pb[i]||0;
+
     if(av>bv)return 1;
     if(av<bv)return -1;
   }
+
   return 0;
+}
+
+async function getCurrentAppVersion(){
+  /*
+   * Android/iOS:
+   * Read the actual version embedded in the installed native app.
+   *
+   * Example:
+   * APK built with versionName 1.0.2
+   * → App.getInfo().version === "1.0.2"
+   */
+  if(Capacitor.isNativePlatform()){
+    const info=await App.getInfo();
+    return String(info.version||"0.0.0").replace(/^v/i,"");
+  }
+
+  /*
+   * Browser/web fallback.
+   *
+   * The browser does not have an installed APK version, so the updater
+   * cannot use App.getInfo() there.
+   */
+  return "0.0.0";
+}
+
+async function checkForAppUpdate(){
+  try{
+    const currentVersion=await getCurrentAppVersion();
+
+    const response=await fetch(
+      "https://api.github.com/repos/"+UPDATE_REPO+"/releases/latest",
+      {
+        headers:{
+          Accept:"application/vnd.github+json"
+        }
+      }
+    );
+
+    if(!response.ok){
+      throw new Error(
+        "Could not check for the latest app release."
+      );
+    }
+
+    const release=await response.json();
+
+    const latestVersion=String(
+      release.tag_name||""
+    ).replace(/^v/i,"");
+
+    const apk=(Array.isArray(release.assets)?release.assets:[])
+      .find(
+        (asset:any)=>
+          String(asset.name||"")
+            .toLowerCase()
+            .endsWith(".apk")
+      );
+
+    if(!latestVersion||!apk?.browser_download_url){
+      throw new Error(
+        "No downloadable APK was found in the latest release."
+      );
+    }
+
+    /*
+     * Compare the REAL installed Android version with
+     * the latest GitHub Release.
+     */
+    if(compareAppVersions(latestVersion,currentVersion)<=0){
+      message(
+        "You are using the latest app version (v"+currentVersion+").",
+        "info"
+      );
+      return;
+    }
+
+    const ok=window.confirm(
+      "A new Shop Management version is available.\n\n"+
+      "Current: v"+currentVersion+"\n"+
+      "Latest: v"+latestVersion+"\n\n"+
+      "Download the update now?"
+    );
+
+    if(!ok)return;
+
+    if(Capacitor.isNativePlatform()){
+      try{
+        await Browser.open({
+          url:String(apk.browser_download_url)
+        });
+      }catch{
+        window.open(
+          String(apk.browser_download_url),
+          "_blank",
+          "noopener,noreferrer"
+        );
+      }
+    }else{
+      window.open(
+        String(apk.browser_download_url),
+        "_blank",
+        "noopener,noreferrer"
+      );
+    }
+
+  }catch(e){
+    message(
+      e instanceof Error
+        ? e.message
+        : String(e),
+      "danger"
+    );
+  }
 }
 
 async function checkForAppUpdate(){
