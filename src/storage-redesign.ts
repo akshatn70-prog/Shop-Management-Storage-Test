@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { ShopDownloads } from "@shop-management/downloads";
 import "./styles.css";
@@ -20,8 +21,8 @@ let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
-const APP_VERSION="1.0.0";
-const UPDATE_REPO="akshatn70-prog/Shop-Management-Storage-Test";
+const UPDATE_REPO="geminiusage143-lab/Shop-Management-Storage-Test";
+const WEB_APP_VERSION="1.0.2";
 
 function compareAppVersions(a:string,b:string){
  const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
@@ -34,22 +35,35 @@ function compareAppVersions(a:string,b:string){
  return 0;
 }
 
+async function getCurrentAppVersion(){
+ if(Capacitor.isNativePlatform()){
+  const info=await App.getInfo();
+  return String(info.version||WEB_APP_VERSION).replace(/^v/i,"");
+ }
+ return WEB_APP_VERSION;
+}
+
 async function checkForAppUpdate(){
  try{
+  const currentVersion=await getCurrentAppVersion();
   const response=await fetch("https://api.github.com/repos/"+UPDATE_REPO+"/releases/latest",{headers:{Accept:"application/vnd.github+json"}});
   if(!response.ok)throw new Error("Could not check for the latest app release.");
   const release=await response.json();
   const latest=String(release.tag_name||"").replace(/^v/i,"");
   const apk=(Array.isArray(release.assets)?release.assets:[]).find((asset:any)=>String(asset.name||"").toLowerCase().endsWith(".apk"));
   if(!latest||!apk?.browser_download_url)throw new Error("No downloadable APK was found in the latest release.");
-  if(compareAppVersions(latest,APP_VERSION)<=0){
-   notify("You are using the latest app version (v"+APP_VERSION+").","success");
+  if(compareAppVersions(latest,currentVersion)<=0){
+   notify("You are using the latest app version (v"+currentVersion+").","success");
    return;
   }
-  const ok=window.confirm("A new Shop Management version is available.\n\nCurrent: v"+APP_VERSION+"\nLatest: v"+latest+"\n\nDownload the update now?");
+  const ok=window.confirm("A new Shop Management version is available.\n\nCurrent: v"+currentVersion+"\nLatest: v"+latest+"\n\nDownload the update now?");
   if(!ok)return;
-  if(Capacitor.isNativePlatform())await Browser.open({url:String(apk.browser_download_url)});
-  else window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer");
+  if(Capacitor.isNativePlatform()){
+   try{await Browser.open({url:String(apk.browser_download_url)})}
+   catch{window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer")}
+  }else{
+   window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer");
+  }
  }catch(e){notify(e instanceof Error?e.message:String(e),"error")}
 }
 
