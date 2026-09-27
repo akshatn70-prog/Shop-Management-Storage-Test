@@ -186,7 +186,38 @@ function cart(){
 }
 function stock(){
  const owner=profile?.role==="owner";
- return '<section class="page"><div class="page-head"><div><h2>Stock</h2><p class="muted">Current stock and purchase actions.</p></div><div class="action-row">'+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th></tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+'</td><td>'+money(p.selling_price_per_base_unit)+'</td></tr>').join("")+'</tbody></table></div></div><div id="stockForm"></div></section>';
+ return '<section class="page"><div class="page-head"><div><h2>Stock</h2><p class="muted">Current stock and purchase actions.</p></div><div class="action-row">'+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+'</td><td>'+money(p.selling_price_per_base_unit)+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div><div id="stockForm"></div></section>';
+}
+function productEditForm(productId:string){
+ const p=products.find(x=>x.id===productId);
+ if(!p)return notify("Product not found.","error");
+ const h=document.querySelector("#stockForm")!;
+ h.innerHTML='<div class="panel"><h3>Edit Product</h3><form id="productEditForm" class="form-grid"><label>Name<input name="name" value="'+esc(p.name)+'" required></label><label>Unit<input value="'+esc(p.unit_type==="piece"?"Pieces":"Weight (grams base)")+'" disabled></label><label>Purchase price<input name="purchase" type="number" min="0" step=".01" value="'+esc(p.purchase_price_per_base_unit)+'" required></label><label>Selling price<input name="sale" type="number" min="0" step=".01" value="'+esc(p.selling_price_per_base_unit)+'" required></label><label>Low stock limit<input name="low" type="number" min="0" step=".001" value="'+esc(p.low_stock_threshold_base)+'" required></label><div class="action-row full"><button class="primary">Save Changes</button><button id="cancelProductEdit" type="button" class="ghost">Cancel</button></div></form></div>';
+ const f=document.querySelector<HTMLFormElement>("#productEditForm")!;
+ document.querySelector("#cancelProductEdit")?.addEventListener("click",()=>{h.innerHTML=""});
+ f.addEventListener("submit",async e=>{
+  e.preventDefault();
+  const fd=new FormData(f),name=String(fd.get("name")||"").trim(),buy=Number(fd.get("purchase")),sell=Number(fd.get("sale")),low=Number(fd.get("low"));
+  if(!name||!Number.isFinite(buy)||buy<0||!Number.isFinite(sell)||sell<0||!Number.isFinite(low)||low<0)return notify("Enter valid product details.","error");
+  try{
+   if(demo){p.name=name;p.purchase_price_per_base_unit=buy;p.selling_price_per_base_unit=sell;p.low_stock_threshold_base=low}
+   else{const r=await supabase!.rpc("update_product",{p_product_id:p.id,p_name:name,p_purchase_price:buy,p_selling_price:sell,p_low_stock_threshold_base:low});if(r.error)throw r.error;await loadData()}
+   notify("Product updated.","success");render();
+  }catch(err){notify(errorMessage(err),"error")}
+ });
+}
+function bindStockActions(){
+ document.querySelectorAll<HTMLButtonElement>(".edit-product").forEach(b=>b.addEventListener("click",()=>productEditForm(String(b.dataset.id||""))));
+ document.querySelectorAll<HTMLButtonElement>(".delete-product").forEach(b=>b.addEventListener("click",async()=>{
+  const id=String(b.dataset.id||""),p=products.find(x=>x.id===id);
+  if(!p)return;
+  if(!window.confirm("Delete product \"" + p.name + "\"? This removes it from active Stock but preserves history."))return;
+  try{
+   if(demo){p.is_active=false;products=products.filter(x=>x.id!==id)}
+   else{const r=await supabase!.rpc("delete_product",{p_product_id:id});if(r.error)throw r.error;await loadData()}
+   notify("Product deleted from active stock. Historical records were preserved.","success");render();
+  }catch(err){notify(errorMessage(err),"error")}
+ }));
 }
 
 function productForm(){
@@ -512,7 +543,7 @@ function bind(){
  if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history")bindHistory(); if(activeTab==="returns")bindReturns();
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
- if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm)}
+ if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm);bindStockActions()}
  if(activeTab==="settings")bindSettings();
 }
 function addSwipeHints(){
