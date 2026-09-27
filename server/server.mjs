@@ -77,9 +77,9 @@ const migrationsDir=path.join(__dirname,"migrations");
 function loadMigrations(){
   if(!fs.existsSync(migrationsDir))return [];
   return fs.readdirSync(migrationsDir)
-    .filter(name=>/^\\d+_[A-Za-z0-9_-]+\\.sql$/.test(name))
+    .filter(name=>/^\d+_[A-Za-z0-9_-]+\.sql$/.test(name))
     .map(name=>{
-      const m=name.match(/^(\\d+)_([A-Za-z0-9_-]+)\\.sql$/);
+      const m=name.match(/^(\d+)_([A-Za-z0-9_-]+)\.sql$/);
       return {version:Number(m[1]),name:m[2],sql:fs.readFileSync(path.join(migrationsDir,name),"utf8")};
     })
     .sort((a,b)=>a.version-b.version);
@@ -147,7 +147,7 @@ async function runManagementQuery(ref,token,query){
   });
 }
 async function verifyOwnerAtProject(projectUrl,publishableKey,userAccessToken){
-  const base=String(projectUrl||"").replace(/\\/$/,"");
+  const base=String(projectUrl||"").replace(/\/$/,"");
   let u;
   try{u=new URL(base)}catch{throw new Error("Invalid Supabase project URL.");}
   const ref=u.hostname.split(".")[0];
