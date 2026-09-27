@@ -15,6 +15,44 @@ function localConnection(){
 }
 const CONFIRM_FLAG="shop_management_email_confirmed";
 
+const APP_VERSION="1.0.0";
+const UPDATE_REPO="akshatn70-prog/Shop-Management-Storage-Test";
+
+function compareAppVersions(a:string,b:string){
+  const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
+  const pb=b.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
+  for(let i=0;i<3;i++){
+    const av=pa[i]||0,bv=pb[i]||0;
+    if(av>bv)return 1;
+    if(av<bv)return -1;
+  }
+  return 0;
+}
+
+async function checkForAppUpdate(){
+  try{
+    const response=await fetch("https://api.github.com/repos/"+UPDATE_REPO+"/releases/latest",{headers:{Accept:"application/vnd.github+json"}});
+    if(!response.ok)throw new Error("Could not check for the latest app release.");
+    const release=await response.json();
+    const latest=String(release.tag_name||"").replace(/^v/i,"");
+    const apk=(Array.isArray(release.assets)?release.assets:[]).find((asset:any)=>String(asset.name||"").toLowerCase().endsWith(".apk"));
+    if(!latest||!apk?.browser_download_url)throw new Error("No downloadable APK was found in the latest release.");
+    if(compareAppVersions(latest,APP_VERSION)<=0){
+      message("You are using the latest app version (v"+APP_VERSION+").","info");
+      return;
+    }
+    const ok=window.confirm("A new Shop Management version is available.\n\nCurrent: v"+APP_VERSION+"\nLatest: v"+latest+"\n\nDownload the update now?");
+    if(!ok)return;
+    if(Capacitor.isNativePlatform()){
+      try{await Browser.open({url:String(apk.browser_download_url)})}catch{window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer")}
+    }else{
+      window.open(String(apk.browser_download_url),"_blank","noopener,noreferrer");
+    }
+  }catch(e){
+    message(e instanceof Error?e.message:String(e),"danger");
+  }
+}
+
 async function handleEmailConfirmationRedirect(){
   const c=localConnection();
   if(!c.url||!c.key)return false;
@@ -260,8 +298,9 @@ async function start(){
 function renderGate(){
   // Keep the entry screen unchanged in purpose: Register remains the existing
   // registration flow, while URL/key are requested only after Login is tapped.
-  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Welcome</h2><p class="muted">Connect your Supabase account once. After registration, everyday login works directly through Supabase.</p><button id="registerNow" class="primary wide">Register / Connect Supabase</button><button id="loginNow" class="ghost wide">Login</button><p class="tiny">Tap Login to connect an existing shop. On a new install/device, enter that shop\'s Supabase URL and publishable key, then sign in.</p>');
+  show('<div class="brand big">SHOP MANAGEMENT</div><h2>Welcome</h2><p class="muted">Connect your Supabase account once. After registration, everyday login works directly through Supabase.</p><button id="registerNow" class="primary wide">Register / Connect Supabase</button><button id="loginNow" class="ghost wide">Login</button><button id="appUpdateLogin" class="ghost wide" type="button">Check for App Update</button><p class="tiny">Tap Login to connect an existing shop. On a new install/device, enter that shop\'s Supabase URL and publishable key, then sign in.</p>');
   document.querySelector("#registerNow")?.addEventListener("click",register);
+  document.querySelector("#appUpdateLogin")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate()}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
   document.querySelector("#loginNow")?.addEventListener("click",login);
 }
 function shouldTakeOver(){
