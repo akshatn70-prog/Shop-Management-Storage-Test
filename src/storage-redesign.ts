@@ -160,7 +160,7 @@ async function setupRealtime(){
  realtimeChannel.subscribe();
  realtimeRefreshTimer=window.setInterval(async()=>{
   if(!profile||demo||!supabase)return;
-  if(activeTab==="today"||activeTab==="reports"){await loadData();render()}
+  if(activeTab==="today"){await loadData();render()}else if(activeTab==="reports"){await loadData()}
  },5000);
 }
 
