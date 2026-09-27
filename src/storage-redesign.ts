@@ -210,7 +210,7 @@ function productEditForm(productId:string){
  document.querySelector("#cancelProductEdit")?.addEventListener("click",()=>{h.innerHTML=""});
  f.addEventListener("submit",async e=>{
   e.preventDefault();
-  const fd=new FormData(f),name=String(fd.get("name")||"").trim(),buy=Number(fd.get("purchase")),sell=Number(fd.get("sale")),low=Number(fd.get("low")),weightUnit=p.unit_type==="weight"?String(fd.get("weightUnit")||"kg"):"kg";
+  const fd=new FormData(f),name=String(fd.get("name")||"").trim(),buy=Number(fd.get("purchase")),sell=Number(fd.get("sale")),low=Number(fd.get("low")),weightUnit=p.unit_type==="weight"?(String(fd.get("weightUnit")||"kg") as "kg"|"grams"):"kg";
   if(!name||!Number.isFinite(buy)||buy<0||!Number.isFinite(sell)||sell<0||!Number.isFinite(low)||low<0||!["kg","grams"].includes(weightUnit))return notify("Enter valid product details.","error");
   try{
    if(demo){p.name=name;p.purchase_price_per_base_unit=buy;p.selling_price_per_base_unit=sell;p.low_stock_threshold_base=low;p.weight_price_unit=p.unit_type==="weight"?weightUnit:undefined}
