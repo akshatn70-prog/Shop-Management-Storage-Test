@@ -39,6 +39,23 @@ const errorMessage=(err:any)=>{
  try{return JSON.stringify(e)}catch{return String(e)}
 };
 const readConn=()=>({url:localStorage.getItem(URL_KEY)||"",key:localStorage.getItem(KEY_KEY)||""});
+const OAUTH_BACKEND_URL="https://shop-management-oauth.onrender.com";
+const verifyAndUpdateDatabase=async()=>{
+ if(demo)return {ok:true,updated:false,database_version:1,applied:[]};
+ if(!supabase||!profile||profile.role!=="owner")throw new Error("Owner access is required.");
+ const sessionResult=await supabase.auth.getSession();
+ if(sessionResult.error||!sessionResult.data.session?.access_token)throw new Error("Your login session has expired. Please sign in again.");
+ const c=readConn();
+ if(!c.url||!c.key)throw new Error("Supabase connection details are missing.");
+ const response=await fetch(OAUTH_BACKEND_URL+"/api/database/verify-and-update",{
+  method:"POST",
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({supabase_url:c.url,publishable_key:c.key,access_token:sessionResult.data.session.access_token})
+ });
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(String(data?.error||"Database update failed."));
+ return data;
+};
 const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return true}return false};
 const daysAgo=(n:number,h=12)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,15,0,0);return d.toISOString()};
 
@@ -558,7 +575,21 @@ function bindCart(){
 }
 function bindSettings(){
  document.querySelector("#settingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),tz=String(fd.get("timezone")||"").trim();try{new Intl.DateTimeFormat("en-US",{timeZone:tz}).format()}catch{return notify("Invalid IANA timezone.","error")}const h=Number(fd.get("resetHour")||12),mi=String(fd.get("resetMinute")||"00"),period=String(fd.get("resetPeriod")||"AM"),h24=period==="AM"?(h===12?0:h):(h===12?12:h+12),next={shop_name:String(fd.get("shop_name")),currency:String(fd.get("currency")),timezone:tz,dashboard_reset_time:String(h24).padStart(2,"0")+":"+mi,allow_below_cost_sales:fd.get("allow_below_cost_sales")==="on",allow_zero_price_sales:fd.get("allow_zero_price_sales")==="on",workers_can_modify_selling_price:fd.get("workers_can_modify_selling_price")==="on"};if(demo){settings={...settings,...next};notify("Settings saved.","success");render();return}const r=await supabase!.from("shop_settings").update({...next,updated_at:new Date().toISOString()}).eq("id",1);if(r.error)return notify(r.error.message,"error");settings={...settings,...next};notify("Settings saved.","success");render()});
- document.querySelector("#verifyDb")?.addEventListener("click",async()=>{if(demo)return notify("Demo database check passed.","success");if(!supabase)return notify("Supabase is not connected.","error");const r=await supabase.rpc("verify_shop_management",{p_expected_shop_id:profile?.shop_id||""});if(r.error)return notify(r.error.message,"error");notify(r.data?.ok?"Database verification passed.":"Missing: "+(r.data?.missing||[]).join(", "),"success")});
+ document.querySelector("#verifyDb")?.addEventListener("click",async()=>{
+  const btn=document.querySelector<HTMLButtonElement>("#verifyDb");
+  if(btn)btn.disabled=true;
+  try{
+   const r=await verifyAndUpdateDatabase();
+   if(r.updated){
+    const names=Array.isArray(r.applied)?r.applied.map((x:any)=>"v"+x.version+" "+x.name).join(", "):"";
+    await loadData();
+    notify("Database updated to version "+r.database_version+(names?" • "+names:"")+"." ,"success");
+   }else{
+    notify("Database is up to date (version "+r.database_version+").","success");
+   }
+  }catch(e){notify(errorMessage(e),"error")}
+  finally{if(btn)btn.disabled=false}
+});
  document.querySelector("#downloadSqlSettingsBtn")?.addEventListener("click",async()=>{try{const r=await fetch("/shop-management-final.sql");if(!r.ok)throw new Error("SQL file unavailable.");downloadText("shop-management-final.sql",await r.text());notify("SQL downloaded.","success")}catch(e){notify(e instanceof Error?e.message:String(e),"error")}});
  document.querySelector("#downloadConnectionBtn")?.addEventListener("click",async()=>{const c=readConn();if(!c.url||!c.key)return notify("Supabase URL and publishable key are not available on this device.","error");const content=["SHOP MANAGEMENT — SUPABASE CONNECTION","", "Supabase Project URL: "+c.url, "Supabase Publishable Key: "+c.key, "", "Keep this file private. The publishable key is intended for the client app, but the file contains your shop connection details."].join("\n");await downloadText("ShopManagement_URL_and_Key.txt",content)});
  document.querySelector("#changeDb")?.addEventListener("click",()=>login("Enter the new Supabase project details below."));
