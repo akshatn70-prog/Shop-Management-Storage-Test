@@ -788,7 +788,7 @@ function login(msg=""){
    '<button class="primary wide">Connect</button></form><button id="appUpdateLogin" class="ghost wide" type="button">Check for App Update</button>'+
    '<p class="tiny">Your URL and publishable key stay on this device. You will only need them again after reinstalling or using a new device.</p></div></div>';
 
-  document.querySelector("#appUpdateLogin")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate()}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
+  document.querySelector("#appUpdateLogin")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate((text,type)=>notify(text,type==="danger"?"error":"info"))}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateLogin");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
 
  document.querySelector<HTMLFormElement>("#connectForm")?.addEventListener("submit",async e=>{
    e.preventDefault();
