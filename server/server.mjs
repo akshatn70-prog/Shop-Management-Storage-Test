@@ -13,6 +13,7 @@ const OAUTH_TICKET_SECRET=process.env.OAUTH_TICKET_SECRET||"";
 const APP_ORIGIN=process.env.APP_ORIGIN||"*";
 const CENTRAL_SUPABASE_URL=process.env.CENTRAL_SUPABASE_URL||"";
 const CENTRAL_SUPABASE_SERVICE_ROLE_KEY=process.env.CENTRAL_SUPABASE_SERVICE_ROLE_KEY||"";
+const CENTRAL_TOKEN_ENCRYPTION_KEY=process.env.CENTRAL_TOKEN_ENCRYPTION_KEY||"";
 
 const sessions=new Map();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,51 @@ function readSetupTicket(ticket){
   return JSON.parse(Buffer.concat([decipher.update(enc),decipher.final()]).toString("utf8"));
 }
 function pkceChallenge(verifier){return crypto.createHash("sha256").update(verifier).digest("base64url")}
+function centralEncryptionKey(){
+  if(!CENTRAL_TOKEN_ENCRYPTION_KEY)throw new Error("Central token encryption key is not configured.");
+  return crypto.createHash("sha256").update(CENTRAL_TOKEN_ENCRYPTION_KEY).digest();
+}
+function encryptRefreshToken(token){
+  if(!token)throw new Error("Supabase OAuth did not return a refresh token.");
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv("aes-256-gcm",centralEncryptionKey(),iv);
+  const enc=Buffer.concat([cipher.update(String(token),"utf8"),cipher.final()]);
+  const tag=cipher.getAuthTag();
+  return "v1:"+Buffer.concat([iv,tag,enc]).toString("base64url");
+}
+async function centralRequest(pathname,options={}){
+  if(!CENTRAL_SUPABASE_URL||!CENTRAL_SUPABASE_SERVICE_ROLE_KEY)
+    throw new Error("Central Supabase environment variables are not configured.");
+  const r=await fetch(CENTRAL_SUPABASE_URL.replace(/\\/$/,"")+pathname,{
+    ...options,
+    headers:{
+      apikey:CENTRAL_SUPABASE_SERVICE_ROLE_KEY,
+      Authorization:"Bearer "+CENTRAL_SUPABASE_SERVICE_ROLE_KEY,
+      Accept:"application/json",
+      "Content-Type":"application/json",
+      ...(options.headers||{})
+    }
+  });
+  const text=await r.text();
+  let data;try{data=text?JSON.parse(text):{}}catch{data={raw:text}}
+  if(!r.ok)throw new Error((data?.message||data?.error||data?.hint||"Central Supabase request failed")+" (HTTP "+r.status+")");
+  return data;
+}
+async function saveShopInstallation(ref,project,refreshToken){
+  const encryptedRefreshToken=encryptRefreshToken(refreshToken);
+  await centralRequest("/rest/v1/shop_installations?on_conflict=project_ref",{
+    method:"POST",
+    headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+    body:JSON.stringify({
+      project_ref:ref,
+      project_url:"https://"+ref+".supabase.co",
+      encrypted_refresh_token:encryptedRefreshToken,
+      database_version:0,
+      status:"active",
+      updated_at:new Date().toISOString()
+    })
+  });
+}
 function body(req){
   return new Promise((resolve,reject)=>{
     let s="";req.on("data",c=>{s+=c;if(s.length>2_000_000)req.destroy()});
@@ -263,6 +309,7 @@ const server=http.createServer(async(req,res)=>{
       }
       const key=await getPublishableKey(ref,token);
       const url="https://"+ref+".supabase.co";
+      await saveShopInstallation(ref,project,s.tokens.refresh_token);
       const setup_ticket=makeSetupTicket({ref,access_token:token,created_at:Date.now()});
       return json(res,200,{ok:true,url,key,setup_ticket,project:{ref:project.ref,name:project.name}});
     }
