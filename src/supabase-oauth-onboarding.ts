@@ -17,6 +17,7 @@ function localConnection(){
 const CONFIRM_FLAG="shop_management_email_confirmed";
 
 const UPDATE_REPO="geminiusage143-lab/Shop-Management-Storage-Test";
+const WEB_APP_VERSION="1.0.2";
 
 function compareAppVersions(a:string,b:string){
   const pa=a.replace(/^v/i,"").split(".").map(x=>Number.parseInt(x,10)||0);
@@ -53,7 +54,7 @@ async function getCurrentAppVersion(){
    * The browser does not have an installed APK version, so the updater
    * cannot use App.getInfo() there.
    */
-  return "0.0.0";
+  return WEB_APP_VERSION;
 }
 
 async function checkForAppUpdate(){
