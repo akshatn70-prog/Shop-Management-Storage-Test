@@ -4664,6 +4664,31 @@ select cron.schedule(
 -- ============================================================
 
 -- Version 7: weight products can price by kg or gram.
+-- Gram pricing can require more than two decimal places.
+-- Example: ₹53/kg = ₹0.053/g. Keep four decimal places so that
+-- gram-priced products do not get rounded to ₹0.05/g.
+alter table public.products
+  alter column purchase_price_per_base_unit type numeric(14,4)
+  using purchase_price_per_base_unit;
+alter table public.products
+  alter column selling_price_per_base_unit type numeric(14,4)
+  using selling_price_per_base_unit;
+
+alter table public.inventory_purchases
+  alter column purchase_price_per_base_unit type numeric(14,4)
+  using purchase_price_per_base_unit;
+
+alter table public.sales
+  alter column selling_price_per_base_unit type numeric(14,4)
+  using selling_price_per_base_unit;
+alter table public.sales
+  alter column purchase_price_per_base_unit type numeric(14,4)
+  using purchase_price_per_base_unit;
+
+alter table public.returns
+  alter column return_price_per_base_unit type numeric(14,4)
+  using return_price_per_base_unit;
+
 alter table public.products add column if not exists weight_price_unit text not null default 'kg';
 update public.products set weight_price_unit='kg' where weight_price_unit is null or weight_price_unit not in ('kg','grams');
 alter table public.products drop constraint if exists products_weight_price_unit_check;
@@ -4704,8 +4729,8 @@ begin
   if not found then raise exception 'Product not found or inactive'; end if;
   if p.unit_type='weight' and p_weight_price_unit not in ('kg','grams') then raise exception 'Weight price unit must be kg or grams'; end if;
   if exists(select 1 from public.products where is_active=true and id<>p_product_id and lower(btrim(name))=lower(v_name)) then raise exception 'An active product with this name already exists'; end if;
-  update public.products set name=v_name,purchase_price_per_base_unit=round(p_purchase_price,2),selling_price_per_base_unit=round(p_selling_price,2),low_stock_threshold_base=p_low_stock_threshold_base,weight_price_unit=case when p.unit_type='weight' then p_weight_price_unit else 'kg' end,updated_at=now() where id=p_product_id;
-  perform public.write_audit('product_updated','product',p_product_id,jsonb_build_object('old_name',p.name,'new_name',v_name,'old_purchase_price',p.purchase_price_per_base_unit,'new_purchase_price',round(p_purchase_price,2),'old_selling_price',p.selling_price_per_base_unit,'new_selling_price',round(p_selling_price,2),'weight_price_unit',case when p.unit_type='weight' then p_weight_price_unit else 'piece' end,'low_stock_threshold_base',p_low_stock_threshold_base));
+  update public.products set name=v_name,purchase_price_per_base_unit=round(p_purchase_price,4),selling_price_per_base_unit=round(p_selling_price,4),low_stock_threshold_base=p_low_stock_threshold_base,weight_price_unit=case when p.unit_type='weight' then p_weight_price_unit else 'kg' end,updated_at=now() where id=p_product_id;
+  perform public.write_audit('product_updated','product',p_product_id,jsonb_build_object('old_name',p.name,'new_name',v_name,'old_purchase_price',p.purchase_price_per_base_unit,'new_purchase_price',round(p_purchase_price,4),'old_selling_price',p.selling_price_per_base_unit,'new_selling_price',round(p_selling_price,4),'weight_price_unit',case when p.unit_type='weight' then p_weight_price_unit else 'piece' end,'low_stock_threshold_base',p_low_stock_threshold_base));
 end;
 $$;
 revoke all on function public.update_product_with_price_unit(uuid,text,numeric,numeric,numeric,text) from public,anon;
