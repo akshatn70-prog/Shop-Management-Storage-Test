@@ -62,25 +62,34 @@ Commands:
 
 ## What the test run covers
 
-The run creates its own piece product, kg-priced weight product, gram-priced
-weight product, customer creditor, and supplier debtor. It exercises:
+Before writing anything, the run checks Today Stats for an empty shop. It then
+creates five creditors followed by five debtors, and creates 50 products:
+40 piece products, five kg-priced products, and five gram-priced products.
+Products start with zero opening stock; the purchase scenarios add and verify
+inventory through the app.
 
-- Product creation with opening stock, price editing, and deletion of an unused
-  zero-stock test product.
-- Purchases paid by cash, UPI, split cash/UPI, credit, and pre-stock recording.
-- Weight stock conversions for kg and grams.
-- Single sales and two-product carts using cash, UPI, split, credit, and
-  credit-plus-cash-plus-UPI.
-- Cart item editing, cart transaction grouping, payment total arithmetic, and
-  rejection of invalid stock and payment splits.
-- Cash, UPI, and split creditor receipts and debtor payments.
-- Purchase and sale returns with cash, UPI, and account balance adjustments.
-- Legacy single-sale void and full cart void, including the assumed transaction
-  RPC, stock restoration, credit reversal, and duplicate-click guard.
-- Sales/purchase history, date selection, Dashboard, Today Stats, Reports, and
-  creditor/debtor histories.
-- Vertical and horizontal scrolling to controls and report columns after the
-  layout shifts.
+The run exercises:
+
+- 50 purchases covering cash, UPI, split cash/UPI, credit, and pre-stock
+  recording, including quantity conversion for piece, kg, and gram products.
+- 40 single-item sales and five two-product cart sales, each covering cash,
+  UPI, split, credit, and credit-plus-cash-plus-UPI outcomes.
+- Cart item editing, transaction grouping, stock changes, payment arithmetic,
+  insufficient-stock rejection, and invalid payment-split rejection.
+- Cash, UPI, and split creditor receipts and debtor payments across all ten
+  accounts.
+- Three purchase returns and three sale returns using cash, UPI, and account
+  balance adjustments.
+- Legacy single-sale void and full cart void, including stock restoration,
+  credit reversal, and duplicate-click protection.
+- Sales and purchase history, date selection, Dashboard, Today Stats, Reports,
+  and creditor/debtor histories.
+- Vertical and horizontal scrolling to find controls and report columns after
+  the layout shifts.
+
+The final check expects about 100 operations (111 planned), ₹25,000 net sales,
+₹4,000 profit, 50 active products, five accounts of each type, and balanced
+sales payment totals.
 
 The suite tests every payment option and defined workflow above. It does not
 try every possible numeric value; that set is unbounded. It uses small known

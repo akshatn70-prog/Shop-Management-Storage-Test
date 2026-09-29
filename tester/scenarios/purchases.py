@@ -185,6 +185,12 @@ async def run(ctx: ScenarioContext) -> None:
             f"Purchases: {key} by {mode}",
             "Each product purchase updates stock and records the selected payment or pre-stock outcome.",
             lambda key=key, mode=mode, index=index: purchase(
-                ctx, key, mode, 10 if key == "Piece" else 2, (index // 5) % 5
+                ctx,
+                key,
+                mode,
+                10 if ctx.run.products[key].unit == "piece" and key == "Piece" else (
+                    2_000 if ctx.run.products[key].unit == "grams" else 2
+                ),
+                (index // 5) % 5,
             ),
         )

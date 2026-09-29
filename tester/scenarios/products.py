@@ -38,11 +38,14 @@ async def create_product(
 
 
 async def run(ctx: ScenarioContext) -> None:
-    catalog = [("Piece", "piece") , ("Weight-Kg", "kg"), ("Weight-Gram", "grams")]
-    units = ("piece", "kg", "grams")
-    catalog.extend((f"Product-{index:02d}", units[(index - 4) % 3]) for index in range(4, 41))
+    catalog = [("Piece", "piece"), ("Weight-Kg", "kg"), ("Weight-Gram", "grams")]
+    remaining_units = ["piece"] * 31 + ["kg"] * 3 + ["grams"] * 3
+    catalog.extend(
+        (f"Product-{index:02d}", remaining_units[index - 4])
+        for index in range(4, 41)
+    )
     for index in range(1, 11):
-        unit = "piece" if index % 2 else ("kg" if index % 4 == 0 else "grams")
+        unit = "piece" if index < 9 else ("kg" if index == 9 else "grams")
         catalog.append((f"Cart-{index:02d}", unit))
 
     for key, unit in catalog:
