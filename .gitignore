@@ -5,4 +5,15 @@ dist/
 .env.*.local
 .DS_Store
 *.log
-android/.gradle/\nandroid/local.properties\nandroid/**/build/\nandroid/.idea/\n
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.idea/
+# Local Playwright tester data
+tester/.env
+tester/state/
+tester/reports/
+tester/screenshots/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo

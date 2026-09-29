@@ -1,0 +1,343 @@
+SHOP MANAGEMENT AUTOMATED WEB TESTER
+====================================
+
+Purpose
+-------
+Build a Telegram-controlled Playwright tester for the Render web application.
+The user logs in manually once. The tester waits 30 seconds, then creates its own
+test data, runs the workflows, checks results, and sends a pass/fail report.
+
+Application under test
+----------------------
+URL: https://shop-management-storage-test.onrender.com/
+Target: web application in a visible Chromium browser
+Login: manual by the user; the tester must never type the password
+Wait after opening: 30 seconds
+
+Important rule
+--------------
+Use a dedicated test Supabase project/shop. Never run destructive reset tests
+against real business data.
+
+
+1. INSTALLATION
+===============
+
+From the project root:
+
+    cd C:\Users\Lenovo\omnirush.ai\shop-management-storage-test
+    py -m venv .venv
+    .\.venv\Scripts\python.exe -m pip install -r tester\requirements.txt
+    .\.venv\Scripts\python.exe -m playwright install chromium
+
+
+2. LOCAL CONFIGURATION
+======================
+
+Create this file (never commit it):
+
+    tester\.env
+
+Contents:
+
+    APP_URL=https://shop-management-storage-test.onrender.com/
+    TELEGRAM_BOT_TOKEN=PUT_THE_BOT_TOKEN_HERE
+    WAIT_AFTER_OPEN_MS=30000
+    HEADLESS=false
+    TEST_PROFILE_DIR=tester\state\browser-profile
+    REPORT_DIR=tester\reports
+    SCREENSHOT_DIR=tester\screenshots
+
+Do not put the token in source code, Telegram messages, screenshots, or reports.
+
+
+3. FILES TO CREATE
+==================
+
+tester/
+  requirements.txt       Already created. Python dependencies.
+  BLUEPRINT.txt          This plan.
+  .env                   Local-only URL, token, and settings.
+  bot.py                 Telegram polling bot and command handling.
+  runner.py              Starts one complete test run and manages state.
+  browser.py             Playwright browser launch, login wait, and helpers.
+  locators.py            Stable selectors/text locators for the application.
+  data_factory.py        Names, products, prices, quantities, and test records.
+  assertions.py           Checks stock, totals, balances, history, and reports.
+  report.py              Creates JSON and readable TXT/HTML results.
+  scenarios/
+    __init__.py
+    products.py           Product creation, editing, deletion, and stock cases.
+    purchases.py          Cash, UPI, split, credit, and pre-stock purchases.
+    sales.py              Single-item sales and payment combinations.
+    carts.py              Multi-item carts and cart credit combinations.
+    returns.py             Purchase returns and sale returns.
+    voids.py               Single-sale and complete-cart void tests.
+    history_reports.py     History, dashboard, today stats, and reports.
+  state/                   Persistent Playwright browser profile (gitignored).
+  reports/                 One report per test run (gitignored).
+  screenshots/             Failure screenshots (gitignored).
+
+The browser profile is persistent so the user can log in manually. On later runs,
+the existing session may already be available. The runner must still wait 30
+seconds and verify that the Dashboard is visible before testing.
+
+
+4. BOT BEHAVIOUR
+================
+
+bot.py should use python-telegram-bot and implement:
+
+  /start   Explain the bot and start a run if none is active.
+  /run     Start a new test run.
+  /status  Show current suite/test progress.
+  /stop    Request cancellation after the current browser action.
+
+The bot must allow only the configured Telegram user/chat ID if access control is
+added later. At minimum, prevent two runs from executing at the same time.
+
+When a run starts, send:
+
+  "Opening the app. Log in manually now. Testing starts after 30 seconds."
+
+After 30 seconds, runner.py checks for a logged-in shell/Dashboard. If the login
+screen is still visible, mark the run BLOCKED, capture a screenshot, and report
+that manual login was not completed. Do not attempt to log in automatically.
+
+
+5. BROWSER BEHAVIOUR
+====================
+
+browser.py should:
+
+  1. Create a visible Chromium context using TEST_PROFILE_DIR.
+  2. Open APP_URL.
+  3. Wait until network/page load is complete.
+  4. Sleep for WAIT_AFTER_OPEN_MS (30 seconds by default).
+  5. Detect the logged-in Dashboard or the app shell.
+  6. Provide helpers:
+       click(locator)
+       fill(locator, value)
+       select(locator, value)
+       scroll_to(locator)
+       read_text(locator)
+       screenshot(test_name)
+  7. Use semantic locators first: get_by_role, get_by_label, get_by_text.
+  8. Use CSS IDs/data-testid only as a fallback.
+  9. Always wait for visible/enabled state before clicking.
+
+Do not use fixed screen coordinates. Buttons can move after products are added.
+Playwright should scroll elements into view automatically before clicking.
+
+
+6. TEST RUN ORDER
+=================
+
+Each test should return a result object:
+
+  {
+    name, status, expected, actual, duration_ms, screenshot, error
+  }
+
+Recommended order:
+
+  A. Startup
+     - Open Render URL.
+     - Wait 30 seconds.
+     - Confirm Dashboard is visible.
+
+  B. Product setup
+     - Create a piece product with opening stock.
+     - Create a weight product priced per kg.
+     - Create a weight product priced per gram.
+     - Verify names, units, prices, and stock.
+     - Edit a product price and verify the new price.
+
+  C. Purchases
+     - Cash purchase.
+     - UPI purchase.
+     - Cash + UPI split purchase.
+     - Credit purchase using a newly created debtor.
+     - Pre-stock recording.
+     - Verify stock increased by the correct base quantity.
+     - Verify cash/UPI/credit amounts and debtor balance.
+
+  D. Single sales
+     - Cash sale.
+     - UPI sale.
+     - Split sale.
+     - Verify stock decreases, total is correct, and history is updated.
+     - Try insufficient stock and verify a clear failure message.
+
+  E. Cart sales
+     - Add two or more different products.
+     - Edit an item and verify the preview total.
+     - Complete cash cart sale.
+     - Complete UPI cart sale.
+     - Complete split cart sale.
+     - Create a creditor and complete pure credit cart sale.
+     - Complete credit + cash + UPI cart sale.
+     - Verify credit equals total minus cash minus UPI.
+     - Verify every product stock changed correctly.
+     - Verify one cart transaction is represented by its transaction ID.
+
+  F. Payments
+     - Receive creditor payment in cash.
+     - Receive creditor payment in UPI.
+     - Receive creditor payment split.
+     - Pay debtor in cash/UPI/split.
+     - Verify outstanding balances.
+
+  G. Returns
+     - Purchase return with cash refund.
+     - Purchase return with UPI refund.
+     - Purchase return with debtor/credit adjustment.
+     - Sale return with cash refund.
+     - Sale return with UPI refund.
+     - Sale return with creditor/credit adjustment.
+     - Verify stock and financial effects.
+
+  H. Voids
+     - Create a single-line sale and void it with a reason.
+     - Confirm stock is restored and history refreshes.
+     - Create a multi-item cart and void the complete cart with a reason.
+     - Confirm all cart lines are voided once, stock is restored, and credit is
+       reversed by the database RPC.
+     - Double-click void buttons and verify duplicate action is prevented.
+
+  I. Views and reports
+     - Sales history.
+     - Purchase history.
+     - Today stats.
+     - Dashboard metrics.
+     - Reports.
+     - Creditor history.
+     - Debtor history.
+     - Verify cart credit is displayed as:
+         total sale - cash amount - UPI amount.
+
+
+7. DATA FACTORY RULES
+=====================
+
+data_factory.py must generate unique names per run, for example:
+
+  RUN-20260930-Rice
+  RUN-20260930-Oil
+  RUN-20260930-Creditor
+  RUN-20260930-Debtor
+
+Keep every created ID/name in a RunContext object so later tests can use the
+same products and accounts. Use small, easy-to-check values such as 10, 20, 50,
+100, and 1000. Avoid random values that make failures hard to understand.
+
+The runner should create data through the visible application UI. Direct database
+queries may be used only for independent verification if test credentials are
+configured separately; never use direct writes to skip the UI workflows.
+
+
+8. ASSERTION RULES
+==================
+
+For every operation, verify both:
+
+  1. A visible success or error message.
+  2. The resulting stock/balance/history value.
+
+Examples:
+
+  sale_total == cash + upi + credit
+  credit == total - cash - upi
+  stock_after_purchase == stock_before + quantity_base
+  stock_after_sale == stock_before - quantity_base
+  stock_after_void == stock_before + quantity_base
+  stock_after_sale_return == stock_after_sale + quantity_base
+  creditor_balance == credit_sales - payments_received
+  debtor_balance == credit_purchases - payments_made
+
+Use a tolerance of 0.01 for money calculations.
+
+
+9. REPORT FORMAT
+================
+
+report.py should create:
+
+  reports/run-YYYYMMDD-HHMMSS.txt
+  reports/run-YYYYMMDD-HHMMSS.json
+  screenshots/<test-name>-failure.png
+
+The Telegram summary should include:
+
+  Total tests
+  Passed
+  Failed
+  Blocked
+  Duration
+  Failed test names and short reasons
+
+Send the TXT report and failure screenshots to Telegram. Keep full JSON locally.
+
+
+10. RUN COMMANDS
+================
+
+After bot.py and the other files have been created:
+
+  From the project root:
+
+    .\.venv\Scripts\python.exe tester\bot.py
+
+  Then send /start to the Telegram bot.
+
+Do not run multiple bot processes with the same token. Stop the old process
+before starting a new one.
+
+
+11. FIRST IMPLEMENTATION MILESTONE
+==================================
+
+Build and verify these files first:
+
+  bot.py
+  runner.py
+  browser.py
+  locators.py
+  report.py
+
+First milestone test:
+
+  open URL -> wait 30 seconds -> detect Dashboard -> navigate to History ->
+  capture a success screenshot -> send Telegram PASS report.
+
+Then add product, purchase, sale, cart, return, void, and report suites one at
+a time. This makes failures easy to diagnose and avoids one huge untestable
+script.
+
+
+12. CURRENT FRONTEND NOTE
+=========================
+
+The active frontend is src/storage-redesign.ts. The current app already has
+many useful IDs such as #addProduct, #productForm, #addPurchase,
+#purchaseFormInner, #historyDate, and #clearAll. Prefer adding stable
+data-testid attributes to important buttons/forms when a locator is difficult.
+
+The existing cart-aware void RPC assumption is:
+
+  void_sale_transaction(p_transaction_id uuid, p_reason text) returns void
+
+Legacy single-sale void remains:
+
+  void_sale(p_sale_id uuid, p_reason text)
+
+The test must verify the actual deployed database has the cart RPC before running
+void tests. If it is missing, mark only that suite BLOCKED and report the exact
+RPC name instead of silently skipping it.
+
+Implementation note (2026-09-30)
+--------------------------------
+The current implementation includes the full visible-UI workflow suite, rather
+than only the initial Dashboard-to-History milestone. Read tester/README.md for
+local setup, the dedicated-shop write gate, test coverage, and current RPC
+assumption. Tests create timestamped RUN-* records and do not reset shop data.

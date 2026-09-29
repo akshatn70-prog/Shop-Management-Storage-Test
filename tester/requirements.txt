@@ -1,0 +1,8 @@
+# Web UI automation
+playwright>=1.45,<2
+
+# Telegram bot control and reports
+python-telegram-bot>=21,<23
+
+# Local environment variables (.env)
+python-dotenv>=1,<2

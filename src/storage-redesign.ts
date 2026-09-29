@@ -8,6 +8,7 @@ type Role="owner"|"worker";
 type Profile={id:string;full_name:string;email:string;role:Role;is_active:boolean;shop_id?:string};
 type Product={id:string;name:string;unit_type:"piece"|"weight";weight_price_unit?: "kg"|"grams";current_stock_base:number;purchase_price_per_base_unit:number;selling_price_per_base_unit:number;low_stock_threshold_base:number;is_active:boolean};
 type AnyRow=Record<string,any>;
+type SaleVoidGroup={key:string;transactionId:string|null;rows:AnyRow[]};
 
 const URL_KEY="shop_management_supabase_url", KEY_KEY="shop_management_supabase_publishable_key";
 let supabase:SupabaseClient|null=null, profile:Profile|null=null;
@@ -18,11 +19,22 @@ let bottomNavScrollLeft=0, reportTableScrollLeft=0;
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
+const voidingSaleKeys=new Set<string>();
+/**
+ * Expected database contract for cart-aware voids:
+ * public.void_sale_transaction(p_transaction_id uuid, p_reason text) returns void.
+ * The RPC is owner-only and must atomically lock a confirmed sale_transactions row,
+ * mark it and every linked sales row voided, restore stock, reverse credit-ledger
+ * effects/aggregates, write an audit entry, and reject blank or repeated voids.
+ * Legacy single-line rows without transaction_id continue to use void_sale(uuid,text).
+ */
+const CART_VOID_RPC="void_sale_transaction";
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
 const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b>'+v+'</b></div>';
 const money=(n:any)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
 const saleTotal=(p:Product|null|undefined,quantityBase:number,sellingPricePerBaseUnit:number)=>{if(p?.unit_type!=="weight")return quantityBase*sellingPricePerBaseUnit;return (p.weight_price_unit||"kg")==="grams"?quantityBase*sellingPricePerBaseUnit:(quantityBase/1000)*sellingPricePerBaseUnit};
+const saleCreditAmount=(sale:AnyRow)=>{const explicit=Number(sale?.credit_amount);if(Number.isFinite(explicit)&&explicit>0)return explicit;if(sale?.payment_mode==="credit"||sale?.payment_mode==="credit_split")return Math.max(0,Number(sale?.total_sale||0)-Number(sale?.cash_amount||0)-Number(sale?.upi_amount||0));return 0};
 const esc=(s:any)=>String(s??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]!));
 const downloadText=async(fileName:string,content:string)=>{
  try{
@@ -123,7 +135,7 @@ function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=
 function qBalance(id:string){return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
 function dBalance(id:string){return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
 function currentSales(){const today=businessDate();return sales.filter(s=>!s.voided&&businessDate(new Date(s.sold_at))===today)}
-function currentStats(){const a=currentSales(),today=businessDate(),r=returnsRows.filter(x=>x.return_type==="sale"&&businessDate(new Date(x.returned_at))===today);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);const cash=a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc;const upi=a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru;const credit=a.reduce((x,y)=>x+(y.payment_mode==="credit"||y.payment_mode==="credit_split"?Math.max(0,Number(y.total_sale||0)-Number(y.cash_amount||0)-Number(y.upi_amount||0)):0),0)-rcr;const sales=a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr;return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash,upi,credit}}
+function currentStats(){const a=currentSales(),today=businessDate(),r=returnsRows.filter(x=>x.return_type==="sale"&&businessDate(new Date(x.returned_at))===today);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);const cash=a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc;const upi=a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru;const credit=a.reduce((x,y)=>x+saleCreditAmount(y),0)-rcr;const sales=a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr;return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash,upi,credit}}
 
 async function loadData(){
  if(demo){if(!demoReady)initDemo();return}
@@ -184,7 +196,7 @@ function sale(){
 
 function cart(){
  const total=cartItems.reduce((a,x)=>{const p=products.find(p=>p.id===x.product_id);return a+saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0)},0);
- return '<section class="page"><div class="page-head"><h2>Cart</h2><span class="badge">'+cartItems.length+' item(s)</span></div><div class="panel"><div class="search-row"><input id="cartSearch" placeholder="Search product to add..."><button id="cartSearchBtn" class="ghost">Search</button></div><div id="cartProducts" class="product-grid"></div><form id="cartAdd" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' — '+p.current_stock_base+' available</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min="0.001" step=".001" value="1"></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="grams">grams</option><option value="kg">kg</option></select></label><label id="cartSellingLabel">Selling price<input name="price" type="number" step=".01" min="0"></label><div class="full notice" id="cartPreview">Preview: select a product</div><button class="primary full">Add to Cart</button></form><div class="notice">Cart total: <b>'+money(total)+'</b></div>'+ (cartItems.length?'<div class="table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Total</th><th></th></tr></thead><tbody>'+cartItems.map((x,i)=>'<tr><td>'+esc(x.product_name_snapshot||products.find(p=>p.id===x.product_id)?.name||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+money(Number(x.quantity_base)*Number(x.selling_price_per_base_unit))+'</td><td><button class="smallbtn edit-cart" data-i="'+i+'">Edit</button> <button class="smallbtn delete-cart" data-i="'+i+'">Delete</button></td></tr>').join("")+'</tbody></table></div>':"")+'<div class="panel"><form id="cartPay" class="form-grid"><label>Payment<select name="mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label><label>Cash<input name="cash" type="number" step=".01" value="'+total.toFixed(2)+'"></label><label>UPI<input name="upi" type="number" step=".01" value="0"></label><label>Credit<input name="credit" type="number" step=".01" value="0"></label><label>Creditor<select name="creditor"><option value="">Select creditor</option>'+creditors.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'<option value="__new__">＋ New Creditor</option></select></label><button class="primary full" '+(cartItems.length?"":"disabled")+'>Confirm Cart Sale</button></form></div></div></section>';
+ return '<section class="page"><div class="page-head"><h2>Cart</h2><span class="badge">'+cartItems.length+' item(s)</span></div><div class="panel"><div class="search-row"><input id="cartSearch" placeholder="Search product to add..."><button id="cartSearchBtn" class="ghost">Search</button></div><div id="cartProducts" class="product-grid"></div><form id="cartAdd" class="form-grid"><label>Product<select name="product">'+products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' — '+p.current_stock_base+' available</option>').join("")+'</select></label><label>Quantity<input name="qty" type="number" min="0.001" step=".001" value="1"></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="grams">grams</option><option value="kg">kg</option></select></label><label id="cartSellingLabel">Selling price<input name="price" type="number" step=".01" min="0"></label><div class="full notice" id="cartPreview">Preview: select a product</div><button class="primary full">Add to Cart</button></form><div class="notice">Cart total: <b>'+money(total)+'</b></div>'+ (cartItems.length?'<div class="table-wrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Total</th><th></th></tr></thead><tbody>'+cartItems.map((x,i)=>{const p=products.find(p=>p.id===x.product_id);return '<tr><td>'+esc(x.product_name_snapshot||p?.name||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+money(saleTotal(p,Number(x.quantity_base)||0,Number(x.selling_price_per_base_unit)||0))+'</td><td><button class="smallbtn edit-cart" data-i="'+i+'">Edit</button> <button class="smallbtn delete-cart" data-i="'+i+'">Delete</button></td></tr>'}).join("")+'</tbody></table></div>':"")+'<div class="panel"><form id="cartPay" class="form-grid"><label>Payment<select name="mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label><label>Cash<input name="cash" type="number" step=".01" value="'+total.toFixed(2)+'"></label><label>UPI<input name="upi" type="number" step=".01" value="0"></label><label>Credit<input name="credit" type="number" step=".01" value="0"></label><label>Creditor<select name="creditor"><option value="">Select creditor</option>'+creditors.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join("")+'<option value="__new__">＋ New Creditor</option></select></label><button class="primary full" '+(cartItems.length?"":"disabled")+'>Confirm Cart Sale</button></form></div></div></section>';
 }async function saveSale(item:any,mode:string,cash:number,upi:number,credit:number,creditorId:string|null){
  if(demo){const p=products.find(x=>x.id===item.product_id);if(!p)throw new Error("Product not found");const total=saleTotal(p,Number(item.quantity_base)||0,Number(item.selling_price_per_base_unit)||0);sales.unshift({...item,id:"demo-sale-"+Date.now(),sold_at:new Date().toISOString(),worker_id:profile!.id,total_sale:total,gross_profit:total-saleTotal(p,Number(item.quantity_base)||0,Number(p.purchase_price_per_base_unit)||0),cash_amount:cash,upi_amount:upi,credit_amount:credit,payment_mode:mode,voided:false,transaction_id:"demo-tx-"+Date.now(),products:{name:p.name},profiles:{full_name:profile!.full_name}});p.current_stock_base-=item.quantity_base;if(credit>0&&creditorId)ledger.unshift({id:"demo-ledger-"+Date.now(),creditor_id:creditorId,type:"credit_sale",amount:credit,payment_mode:mode,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});return}
  if(mode==="cash"||mode==="upi"||mode==="split"){
@@ -481,7 +493,7 @@ function purchaseForm(){
    notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success");render();return
   }
   const r=await supabase!.rpc("add_inventory_purchase",{p_product_id:p.id,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:p.unit_type==="piece"?"piece":pu,p_purchase_price:pr,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:prestock,p_supplier_name:String(fd.get("supplier")||p.name)});
-  if(r.error)return notify(errorMessage(r.error),"error");await loadData();render()
+  if(r.error)return notify(errorMessage(r.error),"error");await loadData();render();notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success")
  });
 }
 async function createCreditor(name:string,mobile:string){
@@ -541,10 +553,10 @@ function historyTable(){
  const start=historyRange==="7"?Date.now()-7*864e5:historyRange==="30"?Date.now()-30*864e5:0;
  const d=historyRange==="date"?historyDate:"";
  const rows=historyType==="sales"?sales.filter(s=>!s.voided&&(!start||new Date(s.sold_at).getTime()>=start)&&(!d||localDate(new Date(s.sold_at))===d)):purchases.filter(p=>!p.pre_stock&&(!start||new Date(p.purchased_at).getTime()>=start)&&(!d||localDate(new Date(p.purchased_at))===d));
- if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc((s.product_name_snapshot&&s.product_name_snapshot!=="Deleted product")?s.product_name_snapshot:(s.products?.name||"Product unavailable"))+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(s.credit_amount||((s.payment_mode==="credit")?s.total_sale:0))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
+  if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc((s.product_name_snapshot&&s.product_name_snapshot!=="Deleted product")?s.product_name_snapshot:(s.products?.name||"Product unavailable"))+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(saleCreditAmount(s))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
  return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Cost</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Supplier</th><th></th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+fmt(p.purchased_at)+'</td><td>'+esc(p.product_name_snapshot)+'</td><td>'+p.quantity_display+' '+esc(p.purchase_unit||"")+'</td><td>'+money(p.total_cost)+'</td><td>'+money(p.cash_amount)+'</td><td>'+money(p.upi_amount)+'</td><td>'+money(Math.max(0,Number(p.credit_amount||0)-Number(p.credit_paid||0)))+'</td><td>'+esc(p.supplier_name||"")+'</td><td>'+(Number(p.credit_amount||0)-Number(p.credit_paid||0)>0.01?'<button class="smallbtn pay-purchase" data-id="'+p.id+'">Pay</button>':"")+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="9" class="muted">No retained purchase details.</td></tr>')+'</tbody></table>';
 }
-function history(){
+function legacyHistory(){
  const today=localDate();
  const matches=(d:any)=>historyRange==="today"?localDate(new Date(d))===today:historyRange==="date"?(!!historyDate&&localDate(new Date(d))===historyDate):historyRange==="7"?new Date(d).getTime()>=Date.now()-7*864e5:historyRange==="30"?new Date(d).getTime()>=Date.now()-30*864e5:true;
  const rows=historyType==="sales"
@@ -553,11 +565,75 @@ function history(){
  const dates=[...new Set(rows.map(x=>localDate(new Date(historyType==="sales"?x.sold_at:x.purchased_at))))].sort().reverse();
  return '<section class="page"><div class="page-head"><div><h2>'+ (historyType==="sales"?"Sales History":"Purchase History") +'</h2><p class="muted">Today is shown by default. Search another date when needed.</p></div></div><div class="seg"><button data-history="sales" class="'+(historyType==="sales"?"active":"")+'">Sales</button><button data-history="purchases" class="'+(historyType==="purchases"?"active":"")+'">Purchases</button><button data-range="today" class="'+(historyRange==="today"?"active":"")+'">Today</button><button data-range="7" class="'+(historyRange==="7"?"active":"")+'">Last 7 Days</button><button data-range="30" class="'+(historyRange==="30"?"active":"")+'">Last 1 Month</button><button data-range="date" class="'+(historyRange==="date"?"active":"")+'">Search Date</button></div><label class="date-inline">Date<input id="historyDate" type="date" value="'+esc(historyDate)+'"></label><div class="panel"><div class="table-wrap"><table><thead><tr>'+ (historyType==="sales"?'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Profit</th>':'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Supplier</th>') +'</tr></thead><tbody>'+rows.map(x=>historyType==="sales"?'<tr><td>'+fmt(x.sold_at)+'</td><td>'+esc((x.product_name_snapshot&&x.product_name_snapshot!=="Deleted product")?x.product_name_snapshot:(x.products?.name||"Product unavailable"))+'</td><td>'+esc(x.quantity_display)+'</td><td>Cash '+money(x.cash_amount)+' · UPI '+money(x.upi_amount)+' · Credit '+money(x.credit_amount)+'</td><td>'+money(x.total_sale)+'</td><td>'+money(x.gross_profit)+'</td></tr>':'<tr><td>'+fmt(x.purchased_at)+'</td><td>'+esc(x.product_name_snapshot||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+esc(x.payment_mode)+'</td><td>'+money(x.total_cost)+'</td><td>'+esc(x.supplier_name||"")+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="6" class="muted">No records for this period.</td></tr>')+'</tbody></table></div><div class="muted tiny">Available dates: '+(dates.length?dates.join(", "):"none")+'</div></div></section>';
 }
+function groupSaleRows(rows:AnyRow[]):SaleVoidGroup[]{
+ const grouped=new Map<string,SaleVoidGroup>();
+ for(const row of rows){
+  const transactionId=row.transaction_id?String(row.transaction_id):null,key=transactionId||String(row.id);
+  const existing=grouped.get(key);
+  if(existing)existing.rows.push(row);else grouped.set(key,{key,transactionId,rows:[row]});
+ }
+ return [...grouped.values()];
+}
+async function voidSaleGroup(group:SaleVoidGroup,button:HTMLButtonElement){
+ if(voidingSaleKeys.has(group.key))return;
+ const reason=window.prompt(group.transactionId?"Enter the correction reason for this cart transaction:":"Enter the correction reason for this sale:");
+ if(reason===null)return;
+ const trimmed=reason.trim();
+ if(!trimmed)return notify("A correction reason is required.","error");
+ if(!window.confirm((group.transactionId?"Void this cart transaction":"Void this sale")+"? This restores stock and reverses its financial effect."))return;
+ voidingSaleKeys.add(group.key);
+ const label=group.transactionId?"Void Cart":"Void Sale";
+ button.disabled=true;button.textContent="Voiding…";
+ try{
+  const targetRows=group.transactionId?sales.filter(x=>String(x.transaction_id||"")===group.transactionId&&!x.voided):group.rows.slice(0,1);
+  if(!targetRows.length)throw new Error("Sale transaction is no longer available.");
+  if(demo){
+   const now=new Date().toISOString();
+   for(const row of targetRows){
+    if(row.voided)continue;
+    row.voided=true;row.void_reason=trimmed;row.voided_at=now;row.voided_by=profile?.id;
+    const p=products.find(x=>x.id===row.product_id);if(p)p.current_stock_base+=Number(row.quantity_base)||0;
+   }
+  }else{
+   if(!supabase)throw new Error("Supabase is not connected.");
+   const response=group.transactionId
+    ? await supabase.rpc(CART_VOID_RPC,{p_transaction_id:group.transactionId,p_reason:trimmed})
+    : await supabase.rpc("void_sale",{p_sale_id:targetRows[0].id,p_reason:trimmed});
+   if(response.error)throw response.error;
+  }
+  await loadData();
+  render();
+  notify(group.transactionId?"Cart transaction voided and stock restored.":"Sale voided and stock restored.","success");
+ }catch(err){
+  notify(errorMessage(err),"error");
+  button.disabled=false;button.textContent=label;
+ }finally{voidingSaleKeys.delete(group.key)}
+}
+function history(){
+ const today=localDate();
+ const matches=(d:any)=>historyRange==="today"?localDate(new Date(d))===today:historyRange==="date"?(!!historyDate&&localDate(new Date(d))===historyDate):historyRange==="7"?new Date(d).getTime()>=Date.now()-7*864e5:historyRange==="30"?new Date(d).getTime()>=Date.now()-30*864e5:true;
+ const rows=historyType==="sales"?sales.filter(x=>!x.voided&&matches(x.sold_at)):purchases.filter(x=>!x.pre_stock&&matches(x.purchased_at));
+ const dates=[...new Set(rows.map(x=>localDate(new Date(historyType==="sales"?x.sold_at:x.purchased_at))))].sort().reverse();
+ const owner=profile?.role==="owner",groups=historyType==="sales"?groupSaleRows(rows):[];
+ const voidButton=(group:SaleVoidGroup)=>'<button type="button" class="smallbtn danger void-sale" data-void-key="'+esc(group.key)+'" '+(group.transactionId?'data-transaction-id="'+esc(group.transactionId)+'"':'data-sale-id="'+esc(group.rows[0].id)+'"')+' title="'+(group.transactionId?"Void the complete cart transaction":"Void this sale")+'">'+(group.transactionId?"Void Cart":"Void Sale")+'</button>';
+ const saleRows=groups.map(group=>group.rows.map((x,index)=>'<tr><td>'+fmt(x.sold_at)+'</td><td>'+esc((x.product_name_snapshot&&x.product_name_snapshot!=="Deleted product")?x.product_name_snapshot:(x.products?.name||"Product unavailable"))+'</td><td>'+esc(x.quantity_display)+'</td><td>'+(group.transactionId?'<span class="tiny">Cart · </span>':"")+'Cash '+money(x.cash_amount)+' · UPI '+money(x.upi_amount)+' · Credit '+money(saleCreditAmount(x))+'</td><td>'+money(x.total_sale)+'</td><td>'+money(x.gross_profit)+'</td>'+(owner&&index===0?'<td rowspan="'+group.rows.length+'">'+voidButton(group)+'</td>':"")+'</tr>').join("")).join("");
+ const purchaseRows=rows.map(x=>'<tr><td>'+fmt(x.purchased_at)+'</td><td>'+esc(x.product_name_snapshot||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+esc(x.payment_mode)+'</td><td>'+money(x.total_cost)+'</td><td>'+esc(x.supplier_name||"")+'</td></tr>').join("");
+ const header=historyType==="sales"?'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Profit</th>'+(owner?'<th>Actions</th>':""):'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Supplier</th>';
+ const body=historyType==="sales"?saleRows:purchaseRows,colspan=historyType==="sales"&&owner?7:6;
+ return '<section class="page"><div class="page-head"><div><h2>'+ (historyType==="sales"?"Sales History":"Purchase History") +'</h2><p class="muted">Today is shown by default. Search another date when needed.</p></div></div><div class="seg"><button data-history="sales" class="'+(historyType==="sales"?"active":"")+'">Sales</button><button data-history="purchases" class="'+(historyType==="purchases"?"active":"")+'">Purchases</button><button data-range="today" class="'+(historyRange==="today"?"active":"")+'">Today</button><button data-range="7" class="'+(historyRange==="7"?"active":"")+'">Last 7 Days</button><button data-range="30" class="'+(historyRange==="30"?"active":"")+'">Last 1 Month</button><button data-range="date" class="'+(historyRange==="date"?"active":"")+'">Search Date</button></div><label class="date-inline">Date<input id="historyDate" type="date" value="'+esc(historyDate)+'"></label><div class="panel"><div class="table-wrap"><table><thead><tr>'+header+'</tr></thead><tbody>'+body+(rows.length?"":'<tr><td colspan="'+colspan+'" class="muted">No records for this period.</td></tr>')+'</tbody></table></div><div class="muted tiny">Available dates: '+(dates.length?dates.join(", "):"none")+'</div></div></section>';
+}
 function bindHistory(){
- document.querySelectorAll<HTMLElement>("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=x.dataset.history!;historyDate="";render()}));
- document.querySelectorAll<HTMLElement>("[data-range]").forEach(x=>x.addEventListener("click",()=>{historyRange=x.dataset.range!;if(historyRange!=="date")historyDate="";render()}));
- document.querySelector("#historyDate")?.addEventListener("change",e=>{historyDate=(e.currentTarget as HTMLInputElement).value;render()});
- document.querySelectorAll<HTMLButtonElement>(".pay-purchase").forEach(b=>b.addEventListener("click",async()=>{
+  document.querySelectorAll<HTMLElement>("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=x.dataset.history!;historyDate="";render()}));
+  document.querySelectorAll<HTMLElement>("[data-range]").forEach(x=>x.addEventListener("click",()=>{historyRange=x.dataset.range!;if(historyRange!=="date")historyDate="";render()}));
+  document.querySelector("#historyDate")?.addEventListener("change",e=>{historyDate=(e.currentTarget as HTMLInputElement).value;render()});
+  document.querySelectorAll<HTMLButtonElement>(".void-sale").forEach(button=>button.addEventListener("click",()=>{
+   const key=String(button.dataset.voidKey||""),transactionId=button.dataset.transactionId?String(button.dataset.transactionId):null,saleId=String(button.dataset.saleId||"");
+   if(!key)return;
+   const rows=transactionId?sales.filter(x=>String(x.transaction_id||"")===transactionId&&!x.voided):sales.filter(x=>String(x.id||"")===saleId&&!x.voided);
+   if(!rows.length)return notify("This sale is no longer available. Refresh the history and try again.","info");
+   void voidSaleGroup({key,transactionId,rows},button);
+  }));
+  document.querySelectorAll<HTMLButtonElement>(".pay-purchase").forEach(b=>b.addEventListener("click",async()=>{
    const p=purchases.find(x=>x.id===b.dataset.id);
    if(!p)return;
    const outstanding=Number(p.credit_amount||0)-Number(p.credit_paid||0);
@@ -700,7 +776,7 @@ function returnForm(type:"purchase"|"sale"){
  const f=document.querySelector<HTMLFormElement>("#returnFormInner")!,priceLabel=document.querySelector("#returnPriceLabel") as HTMLElement,accountBox=document.querySelector("#returnAccountBox") as HTMLElement,account=f.elements.namedItem("account") as HTMLSelectElement,modeEl=f.elements.namedItem("mode") as HTMLSelectElement,preview=document.querySelector("#returnPreview") as HTMLElement;
  const syncPriceLabel=()=>{const p=products.find(x=>x.id===String((f.elements.namedItem("product") as HTMLSelectElement).value));if(priceLabel)priceLabel.firstChild!.textContent=p?.unit_type==="weight"?"Return price / "+((p.weight_price_unit||"kg")==="kg"?"kg":"gram"):"Return price"}; const syncAccount=()=>{accountBox.classList.toggle("hidden",modeEl.value!=="credit_adjustment");account.innerHTML='<option value="">Select account</option>'+(sale?creditors:debtors).map(c=>'<option value="'+c.id+'">'+esc(c.name)+' — '+esc(c.mobile||"")+'</option>').join("")};modeEl.addEventListener("change",syncAccount);syncAccount();
  const calc=()=>{const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")||0),price=Number(fd.get("price")||0),unit=String(fd.get("unit")),base=p?.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty,total=p?saleTotal(p,base,price):0;if(p)preview.textContent="Return amount: "+money(total)+" • Stock will "+(sale?"increase":"decrease")+" by "+base+(p.unit_type==="weight"?" g":" pcs")};f.addEventListener("input",calc); document.querySelector<HTMLSelectElement>('#returnFormInner select[name="product"]')?.addEventListener("change",()=>{syncPriceLabel();calc()}); syncPriceLabel();
- f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:saleTotal(p,base,price),payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render()});calc();
+ f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:saleTotal(p,base,price),payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render();notify("Return recorded.","success")});calc();
 }
 function bind(){
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
