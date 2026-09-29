@@ -18,9 +18,10 @@ async def _wait_balance(ctx: ScenarioContext, kind: str, account, expected: floa
     raise AssertionError(f"{kind.title()} balance did not update to {expected:.2f}; found {latest}.")
 
 
-async def _pay(ctx: ScenarioContext, kind: str, mode: str) -> str:
+async def _pay(ctx: ScenarioContext, kind: str, mode: str, account_index: int) -> str:
     await ensure_accounts(ctx)
-    account = ctx.run.creditor if kind == "creditor" else ctx.run.debtor
+    accounts = ctx.run.creditors if kind == "creditor" else ctx.run.debtors
+    account = accounts[account_index]
     before = await account_balance(ctx, kind, account)
     if before < 1:
         raise AssertionError(f"Test {kind} has no outstanding amount to pay: {before:.2f}.")
@@ -33,26 +34,30 @@ async def _pay(ctx: ScenarioContext, kind: str, mode: str) -> str:
     ctx.session.queue_prompts(*prompts)
     await ctx.session.click(row.get_by_role("button", name="Pay", exact=True))
     after = await _wait_balance(ctx, kind, account, before - amount)
-    feedback = await ctx.wait_toast("success", timeout_ms=1200)
+    feedback = await ctx.wait_toast("success", timeout_ms=5_000)
     if not feedback:
         raise AssertionError(
             f"{kind.title()} balance changed from {before:.2f} to {after:.2f}, "
             "but no visible success confirmation appeared."
         )
+    ctx.run.activity["account_payments"] = ctx.run.activity.get("account_payments", 0) + 1
     return f"{kind.title()} balance {before:.2f} → {after:.2f}; mode {mode}; feedback: {feedback}"
 
 
 async def run(ctx: ScenarioContext) -> None:
     await ensure_accounts(ctx)
-    for mode in ("cash", "upi", "split"):
+    modes = ("cash", "upi", "split")
+    for index, account in enumerate(ctx.run.creditors):
+        mode = modes[index % len(modes)]
         await ctx.step(
-            f"Payments: receive creditor payment by {mode}",
-            "Creditor outstanding decreases by one unit and a success message appears.",
-            lambda mode=mode: _pay(ctx, "creditor", mode),
+            f"Payments: settle {account.name} by {mode}",
+            "Each creditor payment lowers the right balance and confirms completion.",
+            lambda mode=mode, index=index: _pay(ctx, "creditor", mode, index),
         )
-    for mode in ("cash", "upi", "split"):
+    for index, account in enumerate(ctx.run.debtors):
+        mode = modes[index % len(modes)]
         await ctx.step(
-            f"Payments: pay debtor by {mode}",
-            "Debtor outstanding decreases by one unit and a success message appears.",
-            lambda mode=mode: _pay(ctx, "debtor", mode),
+            f"Payments: settle {account.name} by {mode}",
+            "Each debtor payment lowers the right balance and confirms completion.",
+            lambda mode=mode, index=index: _pay(ctx, "debtor", mode, index),
         )

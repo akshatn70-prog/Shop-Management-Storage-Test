@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from assertions import money_close
+from assertions import SuiteBlocked, money_close
 from scenarios.common import ScenarioContext
 from scenarios.purchases import account_balance, ensure_accounts
 
@@ -19,10 +19,10 @@ def _money(text: str) -> float:
 async def sales_history_crosscheck(ctx: ScenarioContext) -> str:
     await ctx.go("history")
     await ctx.session.click(ctx.page.get_by_role("button", name="Sales", exact=True))
-    rows = ctx.page.locator("tbody tr").filter(has_text=ctx.run.products["Piece"].name)
+    rows = ctx.page.locator("tbody tr").filter(has_text=f"RUN-{ctx.run.run_id}-")
     count = await rows.count()
-    if count < 5:
-        raise AssertionError(f"Expected the five single-sale payment cases; found {count} rows.")
+    if count < 50:
+        raise AssertionError(f"Expected at least 50 test sale lines, including cart items; found {count} rows.")
     checked = 0
     for index in range(count):
         row = rows.nth(index)
@@ -34,12 +34,12 @@ async def sales_history_crosscheck(ctx: ScenarioContext) -> str:
             raise AssertionError(f"Payment breakdown missing on sale row: {payment}")
         money_close(sum(values[:3]), total)
         checked += 1
-    return f"Cross-checked {checked} single-sale rows: cash + UPI + credit equals each sale total."
+    return f"Cross-checked {checked} test sale lines: cash + UPI + credit equals each line total."
 
 async def sales_credit_crosscheck(ctx: ScenarioContext) -> str:
     await ctx.go("history")
     await ctx.session.click(ctx.page.get_by_role("button", name="Sales", exact=True))
-    rows = ctx.page.locator("tbody tr").filter(has_text="Cart")
+    rows = ctx.page.locator("tbody tr")
     count = await rows.count()
     if count < 2:
         raise AssertionError(f"Expected cart sale lines in History; found {count}.")
@@ -47,7 +47,7 @@ async def sales_credit_crosscheck(ctx: ScenarioContext) -> str:
     for index in range(count):
         row = rows.nth(index)
         text = await row.inner_text()
-        if not any(product in text for product in (ctx.run.products["Piece"].name, ctx.run.products["Weight-Kg"].name)):
+        if not any(ctx.run.products[f"Cart-{key:02d}"].name in text for key in range(1, 11)):
             continue
         cells = row.locator("td")
         payment = await cells.nth(3).inner_text()
@@ -61,22 +61,88 @@ async def sales_credit_crosscheck(ctx: ScenarioContext) -> str:
             raise AssertionError(f"Expected cash, UPI, and credit values in {payment!r}.")
         money_close(sum(values[:3]), total)
         checked += 1
-    if checked < 2:
-        raise AssertionError("Did not cross-check at least two mixed-cart product lines.")
+    if checked != 10:
+        raise AssertionError(f"Expected to cross-check all 10 benchmark cart lines; found {checked}.")
     return f"Cross-checked {checked} cart lines: displayed cash + UPI + credit equals each line total."
 
 
 async def purchase_history(ctx: ScenarioContext) -> str:
     await ctx.go("history")
     await ctx.session.click(ctx.page.get_by_role("button", name="Purchases", exact=True))
-    piece_name = ctx.run.products["Piece"].name
-    rows = ctx.page.locator("tbody tr").filter(has_text=piece_name)
-    if await rows.count() < 3:
-        raise AssertionError("Cash/UPI/split/credit purchases were not all visible in Purchase History.")
+    rows = ctx.page.locator("tbody tr").filter(has_text=f"RUN-{ctx.run.run_id}-")
+    if await rows.count() != 40:
+        raise AssertionError(f"Expected 40 financial purchase rows; found {await rows.count()}.")
     text = "\n".join(await rows.all_inner_texts())
     if "pre_stock" in text.casefold() or "pre-stock" in text.casefold():
         raise AssertionError("Pre-stock recording should not appear as a financial purchase.")
     return f"{await rows.count()} purchase-history rows visible; pre-stock remains excluded."
+
+
+async def fresh_shop_preflight(ctx: ScenarioContext) -> str:
+    await ctx.go("today")
+    values = await _today_metrics(ctx)
+    sales = _money(values.get("Sales", "₹0"))
+    profit = _money(values.get("Profit", "₹0"))
+    transactions = int(re.sub(r"[^0-9]", "", values.get("Transactions", "0")) or "0")
+    products = int(re.sub(r"[^0-9]", "", values.get("Products", "0")) or "0")
+    if sales or profit or transactions or products:
+        raise SuiteBlocked(
+            "The configured shop is not fresh/empty. No test records were created. "
+            f"Current values: Sales ₹{sales:.2f}, Profit ₹{profit:.2f}, "
+            f"Transactions {transactions}, Products {products}."
+        )
+    return "Fresh shop confirmed: today has zero sales, profit, transactions, and products."
+
+
+async def _today_metrics(ctx: ScenarioContext) -> dict[str, str]:
+    cards = ctx.page.locator(".metric")
+    values: dict[str, str] = {}
+    for index in range(await cards.count()):
+        card = cards.nth(index)
+        label = (await card.locator("span").inner_text()).strip()
+        value = (await card.locator("b").inner_text()).strip()
+        values[label] = value
+    return values
+
+
+async def financial_targets(ctx: ScenarioContext) -> str:
+    expected_activity = {
+        "purchases": 50,
+        "single_sales": 40,
+        "cart_sales": 5,
+        "returns": 6,
+        "account_payments": 10,
+    }
+    actual_activity = {key: ctx.run.activity.get(key, 0) for key in expected_activity}
+    if actual_activity != expected_activity:
+        raise AssertionError(f"Expected transaction plan {expected_activity}; completed {actual_activity}.")
+    total_activity = sum(actual_activity.values())
+    if total_activity != 111:
+        raise AssertionError(f"Expected about 100 recorded operations (111 planned); counted {total_activity}.")
+
+    await ctx.go("today")
+    values = await _today_metrics(ctx)
+    sales = _money(values.get("Sales", ""))
+    profit = _money(values.get("Profit", ""))
+    transactions = int(re.sub(r"[^0-9]", "", values.get("Transactions", "0")) or "0")
+    products = int(re.sub(r"[^0-9]", "", values.get("Products", "0")) or "0")
+    money_close(sales, 25_000)
+    money_close(profit, 4_000)
+    if transactions != 45:
+        raise AssertionError(f"Expected 45 active sale/cart transactions; Today Stats shows {transactions}.")
+    if products != 50:
+        raise AssertionError(f"Expected 50 active products; Today Stats shows {products}.")
+    if len(ctx.run.creditors) != 5 or len(ctx.run.debtors) != 5:
+        raise AssertionError(
+            f"Expected 5 creditors and 5 debtors; found {len(ctx.run.creditors)} and {len(ctx.run.debtors)}."
+        )
+    if await ctx.page.get_by_text("Balanced", exact=True).count() == 0:
+        raise AssertionError("Today Stats reconciliation did not show Balanced.")
+    return (
+        f"Verified {total_activity} workflow records (50 purchases, 45 sale/cart transactions, "
+        f"6 returns, 10 account payments); 50 products, 5 creditors, 5 debtors; "
+        f"net sales ₹{sales:.2f}, profit ₹{profit:.2f}, reconciliation balanced."
+    )
 
 
 async def date_filter(ctx: ScenarioContext) -> str:

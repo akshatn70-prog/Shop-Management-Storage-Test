@@ -100,10 +100,21 @@ async def run_suite(progress_callback=None, cancel_event: asyncio.Event | None =
         ))
 
         context = ScenarioContext(run)
+        await context.step(
+            "Preflight: confirm fresh test shop",
+            "Today Stats show no products, sales, profit, or transactions before any test data is added.",
+            lambda: history_reports.fresh_shop_preflight(context),
+        )
+        if not results or results[-1].name != "Preflight: confirm fresh test shop" or results[-1].status != "PASS":
+            await progress("Preflight did not confirm an empty shop. No test data was created.")
+            return create_report(run_id, started, datetime.now().astimezone(), results, report_dir)
+
         suites = [
-            ("Products and stock setup", products.run),
+            ("Create five creditors, then five debtors", purchases.create_all_accounts),
+            ("Create and verify 50 products", products.run),
             ("Purchases and accounts", purchases.run),
             ("Purchase payment validation", purchases.invalid_split_suite),
+            ("Voids", voids.run),
             ("Single-item sales", sales.run),
             ("Multi-item carts", carts.run),
             ("Cart payment validation", carts.invalid_split_suite),
@@ -111,12 +122,13 @@ async def run_suite(progress_callback=None, cancel_event: asyncio.Event | None =
             ("Returns", returns.run),
             ("History, stats, and reports", history_reports.run),
             ("Scroll movement", history_reports.scroll_sweep),
-            ("Voids", voids.run),
         ]
         for suite_name, suite in suites:
             if cancel_event.is_set():
                 raise RunCancelled("Cancellation requested.")
             await progress(f"Starting suite: {suite_name}.")
+            if suite_name == "Single-item sales":
+                run.benchmark_active = True
             try:
                 await suite(context)
             except asyncio.CancelledError:
@@ -127,6 +139,14 @@ async def run_suite(progress_callback=None, cancel_event: asyncio.Event | None =
                     expected="Suite completes and reports its individual checks.",
                     actual=f"{type(exc).__name__}: {exc}", duration_ms=0, error=str(exc),
                 ))
+            if suite_name == "Multi-item carts":
+                run.benchmark_active = False
+        await context.step(
+            "Final: cross-check 100+ operations and ₹25,000 sales / ₹4,000 profit",
+            "The run records about 100 shop operations and verifies products, accounts, balances, sales, profit, and reconciliation.",
+            lambda: history_reports.financial_targets(context),
+            timeout_s=90,
+        )
         await progress("All configured suites finished. Writing the report.")
     except asyncio.CancelledError as exc:
         if not any(r.error == "Cancellation requested." for r in results):

@@ -96,6 +96,23 @@ class ScenarioContext:
             raise AssertionError(f"Could not read stock from row: {text}")
         return float(match.group(1))
 
+    async def wait_stock_value(
+        self, product_name: str, expected: float, timeout_ms: int = 15_000, tolerance: float = 0.001
+    ) -> float:
+        deadline = time.monotonic() + timeout_ms / 1000
+        latest = None
+        while time.monotonic() < deadline:
+            try:
+                latest = await self.stock(product_name)
+                if abs(latest - expected) <= tolerance:
+                    return latest
+            except AssertionError:
+                pass
+            await self.page.wait_for_timeout(150)
+        raise AssertionError(
+            f"Stock for {product_name!r} did not reach {expected}; last visible value was {latest}."
+        )
+
     async def stock_row(self, product_name: str) -> str:
         rows = self.page.get_by_role("row").filter(has_text=product_name)
         if not await rows.count():

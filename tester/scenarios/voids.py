@@ -82,10 +82,10 @@ async def void_cart(ctx: ScenarioContext) -> str:
     await ctx.go("stock")
     after_piece = await ctx.stock(piece.name)
     after_weight = await ctx.stock(weight.name)
-    if after_piece != before_piece + 2:
-        raise AssertionError(f"Cart void should restore two pieces: {before_piece} → {after_piece}.")
-    if after_weight != before_weight + 100:
-        raise AssertionError(f"Cart void should restore 100 grams: {before_weight} → {after_weight}.")
+    if after_piece != before_piece + 1:
+        raise AssertionError(f"Cart void should restore one piece: {before_piece} → {after_piece}.")
+    if after_weight != before_weight + 1000:
+        raise AssertionError(f"Cart void should restore one kg: {before_weight} → {after_weight}.")
     credit_after = await account_balance(ctx, "creditor", ctx.run.creditor)
     expected_credit = float(ctx.run.last_cart["credit"])
     if abs(credit_before - credit_after - expected_credit) > 0.01:

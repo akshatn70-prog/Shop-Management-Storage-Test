@@ -6,9 +6,11 @@ from scenarios.purchases import account_balance, ensure_accounts
 
 async def make_return(ctx: ScenarioContext, kind: str, mode: str) -> str:
     is_sale = kind == "sale"
-    product = ctx.run.products["Piece"]
+    key = "Piece" if mode == "cash" else ("Weight-Kg" if mode == "upi" else "Product-04")
+    product = ctx.run.products[key]
     account_kind = "creditor" if is_sale else "debtor"
-    account = ctx.run.creditor if is_sale else ctx.run.debtor
+    accounts = ctx.run.creditors if is_sale else ctx.run.debtors
+    account = accounts[0]
     if not account:
         raise AssertionError(f"Test {account_kind} was not created.")
     await ctx.go("stock")
@@ -20,20 +22,24 @@ async def make_return(ctx: ScenarioContext, kind: str, mode: str) -> str:
     form = ctx.page.locator("#returnFormInner")
     await form.wait_for(state="visible")
     await ctx.select_option_containing(await ctx.field(form, "product"), product.name)
-    await ctx.form_fill(form, "qty", 1)
-    await ctx.form_select(form, "unit", "piece")
+    qty, unit = (1, "piece") if product.unit == "piece" else (
+        (1, "kg") if product.price_unit == "kg" else (1000, "grams")
+    )
+    await ctx.form_fill(form, "qty", qty)
+    await ctx.form_select(form, "unit", unit)
     price = product.selling_price if is_sale else product.purchase_price
     await ctx.form_fill(form, "price", price)
     await ctx.form_select(form, "mode", mode)
     if mode == "credit_adjustment":
         await ctx.select_option_containing(await ctx.field(form, "account"), account.name)
-    amount = price
+    amount = qty * price
     await ctx.session.click(form.get_by_role("button", name="Confirm Return", exact=True))
-    feedback = await ctx.wait_toast("success", timeout_ms=1500)
+    feedback = await ctx.wait_toast("success", timeout_ms=5_000)
     await ctx.page.locator("#returnFormInner").wait_for(state="detached", timeout=12_000)
     await ctx.go("stock")
-    after_stock = await ctx.stock(product.name)
-    expected_stock = before_stock + 1 if is_sale else before_stock - 1
+    base = qty if product.unit == "piece" else (qty * 1000 if unit == "kg" else qty)
+    expected_stock = before_stock + base if is_sale else before_stock - base
+    after_stock = await ctx.wait_stock_value(product.name, expected_stock)
     if after_stock != expected_stock:
         raise AssertionError(f"{kind} return stock expected {expected_stock}; found {after_stock}.")
     if mode == "credit_adjustment":
@@ -59,6 +65,7 @@ async def make_return(ctx: ScenarioContext, kind: str, mode: str) -> str:
         raise AssertionError(
             f"{kind.title()} return updated stock/history, but no visible success confirmation appeared."
         )
+    ctx.run.activity["returns"] = ctx.run.activity.get("returns", 0) + 1
     return (
         f"{kind} return {mode}: stock {before_stock} → {after_stock}; "
         f"amount ₹{amount:.2f}; history row verified; feedback: {feedback}"

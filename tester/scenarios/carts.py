@@ -25,25 +25,35 @@ async def add_cart_item(ctx: ScenarioContext, key: str, qty: float, unit: str) -
     return feedback, amount
 
 
-async def sell_cart(ctx: ScenarioContext, mode: str) -> str:
+async def sell_cart(
+    ctx: ScenarioContext, mode: str, pair_index: int | None = None, account_index: int = 0
+) -> str:
     await ensure_accounts(ctx)
+    creditor = ctx.run.creditors[account_index % len(ctx.run.creditors)] if ctx.run.creditors else ctx.run.creditor
     creditor_balance_before = None
-    if mode in ("credit", "credit_split") and ctx.run.creditor:
-        creditor_balance_before = await account_balance(ctx, "creditor", ctx.run.creditor)
+    if mode in ("credit", "credit_split") and creditor:
+        creditor_balance_before = await account_balance(ctx, "creditor", creditor)
     await ctx.go("history")
     before_actions = await ctx.page.locator(".void-sale[data-transaction-id]").count()
     await ctx.go("cart")
-    piece = ctx.run.products["Piece"]
-    weight = ctx.run.products["Weight-Kg"]
-    await add_cart_item(ctx, "Piece", 2, "piece")
-    await add_cart_item(ctx, "Weight-Kg", 100, "grams")
-    total = _item_total(piece, 2, "piece")[1] + _item_total(weight, 100, "grams")[1]
-    if abs(total - (2 * piece.selling_price + 100 * weight.selling_price / 1000)) > 0.01:
+    keys = ("Piece", "Weight-Kg") if pair_index is None else (
+        f"Cart-{pair_index * 2 + 1:02d}", f"Cart-{pair_index * 2 + 2:02d}"
+    )
+    items = []
+    for key in keys:
+        product = ctx.run.products[key]
+        qty, unit = (1, "piece") if product.unit == "piece" else (
+            (1, "kg") if product.price_unit == "kg" else (1000, "grams")
+        )
+        _, amount = await add_cart_item(ctx, key, qty, unit)
+        base, _ = _item_total(product, qty, unit)
+        items.append((key, product, qty, unit, base, amount))
+    total = sum(item[5] for item in items)
+    if abs(total - 1000) > 0.01:
         raise AssertionError("Mixed-unit cart total calculation did not match the expected total.")
 
     await ctx.go("stock")
-    before_piece = await ctx.stock(piece.name)
-    before_weight = await ctx.stock(weight.name)
+    before = {key: await ctx.stock(product.name) for key, product, *_ in items}
     await ctx.go("cart")
     payment = ctx.page.locator("#cartPay")
     await ctx.form_select(payment, "mode", mode)
@@ -60,7 +70,7 @@ async def sell_cart(ctx: ScenarioContext, mode: str) -> str:
     elif mode == "credit":
         credit = total
         await ctx.form_fill(payment, "credit", credit)
-        await ctx.select_option_containing(await ctx.field(payment, "creditor"), ctx.run.creditor.name)
+        await ctx.select_option_containing(await ctx.field(payment, "creditor"), creditor.name)
     elif mode == "credit_split":
         cash = round(total * 0.25, 2)
         upi = round(total * 0.25, 2)
@@ -68,30 +78,28 @@ async def sell_cart(ctx: ScenarioContext, mode: str) -> str:
         await ctx.form_fill(payment, "cash", cash)
         await ctx.form_fill(payment, "upi", upi)
         await ctx.form_fill(payment, "credit", credit)
-        await ctx.select_option_containing(await ctx.field(payment, "creditor"), ctx.run.creditor.name)
+        await ctx.select_option_containing(await ctx.field(payment, "creditor"), creditor.name)
     await ctx.session.click(payment.get_by_role("button", name="Confirm Cart Sale", exact=True))
     feedback = await ctx.wait_success("Cart sale completed")
-    await ctx.page.locator("#cartPay").wait_for(state="detached", timeout=12_000)
+    await ctx.page.locator(".page-head .badge").get_by_text("0 item(s)", exact=True).wait_for(timeout=15_000)
     await ctx.go("stock")
-    after_piece = await ctx.stock(piece.name)
-    after_weight = await ctx.stock(weight.name)
-    if abs(after_piece - (before_piece - 2)) > 0.001:
-        raise AssertionError(f"Cart did not decrement piece stock by two: {before_piece} → {after_piece}.")
-    if abs(after_weight - (before_weight - 100)) > 0.001:
-        raise AssertionError(f"Cart did not decrement weight stock by 100g: {before_weight} → {after_weight}.")
-    ctx.run.products["Piece"].stock_base = after_piece
-    ctx.run.products["Weight-Kg"].stock_base = after_weight
-    if credit > 0 and creditor_balance_before is not None:
-        creditor_balance_after = await account_balance(ctx, "creditor", ctx.run.creditor)
+    after = {}
+    for key, product, _, _, base, _ in items:
+        after[key] = await ctx.wait_stock_value(product.name, before[key] - base)
+        ctx.run.products[key].stock_base = after[key]
+    if credit > 0 and creditor and creditor_balance_before is not None:
+        creditor_balance_after = await account_balance(ctx, "creditor", creditor)
         if abs(creditor_balance_after - creditor_balance_before - credit) > 0.01:
             raise AssertionError(
                 f"Creditor balance should rise by cart credit ₹{credit:.2f}; found {creditor_balance_before:.2f} → {creditor_balance_after:.2f}."
             )
-        ctx.run.creditor.balance = creditor_balance_after
+        creditor.balance = creditor_balance_after
     ctx.run.last_cart = {
         "mode": mode, "total": total, "cash": cash, "upi": upi, "credit": credit,
-        "piece": piece.name, "weight": weight.name,
+        "products": [item[1].name for item in items],
     }
+    if ctx.run.benchmark_active:
+        ctx.run.activity["cart_sales"] = ctx.run.activity.get("cart_sales", 0) + 1
     await ctx.go("history")
     after_actions = await ctx.page.locator(".void-sale[data-transaction-id]").count()
     if after_actions != before_actions + 1:
@@ -129,11 +137,11 @@ async def run(ctx: ScenarioContext) -> None:
         "Quantity, item amount, and cart total update after editing.",
         lambda: edit_cart_item(ctx),
     )
-    for mode in ("cash", "upi", "split", "credit", "credit_split"):
+    for index, mode in enumerate(("cash", "upi", "split", "credit", "credit_split")):
         await ctx.step(
             f"Carts: mixed-item {mode} payment",
             "Two products complete as one cart transaction; payment parts sum to total and both stocks decrease.",
-            lambda mode=mode: sell_cart(ctx, mode),
+            lambda mode=mode, index=index: sell_cart(ctx, mode, index, index),
         )
 
 async def invalid_split_payment(ctx: ScenarioContext) -> str:

@@ -31,6 +31,10 @@ class RunContext:
     products: dict[str, Product] = field(default_factory=dict)
     creditor: Account | None = None
     debtor: Account | None = None
+    creditors: list[Account] = field(default_factory=list)
+    debtors: list[Account] = field(default_factory=list)
+    activity: dict[str, int] = field(default_factory=dict)
+    benchmark_active: bool = False
     ids: dict[str, str] = field(default_factory=dict)
     owner: bool = True
     last_sale: dict[str, Any] | None = None
