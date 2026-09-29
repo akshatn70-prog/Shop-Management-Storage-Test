@@ -197,7 +197,7 @@ async def scroll_sweep(ctx: ScenarioContext) -> str:
               }
             }"""
         )
-        await ctx.session.scroll_to(ctx.page.locator('[data-nav="history"]'))
+        await ctx.session.click(ctx.page.locator('[data-nav="history"]'))
         await ctx.page.get_by_role("heading", name="Sales History", exact=False).wait_for(state="visible")
         if before["max"] > 0 and (right <= 0 or right_again <= left):
             raise AssertionError(
