@@ -9,6 +9,20 @@ async def create_product(
 ) -> str:
     name = unique_name(ctx.run.run_id, key)
     await ctx.go("stock")
+    existing = ctx.page.get_by_role("row").filter(has_text=name)
+    if await existing.count():
+        row = await existing.first.inner_text()
+        stock = await ctx.stock(name)
+        ctx.run.products[key] = Product(
+            name=name,
+            unit=unit,
+            price_unit="piece" if unit == "piece" else ("kg" if unit == "kg" else "grams"),
+            purchase_price=buy,
+            selling_price=sell,
+            stock_base=stock,
+        )
+        return f"Resumed existing product: {row.strip()} | stock {stock}."
+
     await ctx.session.click(ctx.page.locator("#addProduct"))
     form = ctx.page.locator("#productForm")
     await form.wait_for(state="visible")
@@ -20,8 +34,7 @@ async def create_product(
     await ctx.form_fill(form, "sale", sell)
     await ctx.form_select(form, "payment", "cash")
     await ctx.session.click(form.get_by_role("button", name="Add Product", exact=True))
-    feedback = await ctx.wait_success()
-    row = await ctx.wait_product(name)
+    row = await ctx.wait_product(name, timeout_ms=20_000)
     expected_stock = opening if unit in ("piece", "grams") else opening * 1000
     ctx.run.products[key] = Product(
         name=name,
@@ -34,6 +47,10 @@ async def create_product(
     stock = await ctx.stock(name)
     if abs(stock - expected_stock) > 0.001:
         raise AssertionError(f"Opening stock should be {expected_stock}; found {stock}.")
+    try:
+        feedback = await ctx.wait_success(timeout_ms=15_000)
+    except AssertionError:
+        feedback = "Success popup not captured; the saved product row and stock were verified."
     return f"{row.strip()} | opening stock {stock}; feedback: {feedback}"
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 from datetime import datetime
 
 from assertions import SuiteBlocked, money_close
@@ -85,6 +86,51 @@ async def fresh_shop_preflight(ctx: ScenarioContext) -> str:
     profit = _money(values.get("Profit", "₹0"))
     transactions = int(re.sub(r"[^0-9]", "", values.get("Transactions", "0")) or "0")
     products = int(re.sub(r"[^0-9]", "", values.get("Products", "0")) or "0")
+    resume_id = os.getenv("RESUME_RUN_ID", "").strip()
+    if resume_id:
+        if not re.fullmatch(r"\d{8}-\d{6}-\d{3}", resume_id):
+            raise SuiteBlocked("Resume mode needs the exact run ID from the interrupted tester session.")
+        if sales or profit or transactions or products != 1:
+            raise SuiteBlocked(
+                "The interrupted shop no longer matches the safe resume state. No new test records were created. "
+                f"Current values: Sales ₹{sales:.2f}, Profit ₹{profit:.2f}, "
+                f"Transactions {transactions}, Products {products}."
+            )
+        for tab, selector, kind in (
+            ("creditors", ".credit-row", "creditor"),
+            ("debtors", ".debtor-row", "debtor"),
+        ):
+            await ctx.go(tab)
+            rows = ctx.page.locator(selector)
+            if await rows.count() != 5:
+                raise SuiteBlocked(f"Resume requires exactly five existing {kind} accounts.")
+            for index in range(1, 6):
+                expected_name = f"RUN-{resume_id}-{kind}-{index:02d}"
+                match = rows.filter(has_text=expected_name)
+                if await match.count() != 1:
+                    raise SuiteBlocked(f"Resume could not verify the expected {kind} {index} row.")
+                amounts = re.findall(r"₹\s*([0-9,]+(?:\.[0-9]{1,2})?)", await match.inner_text())
+                if amounts and any(float(value.replace(",", "")) > 0.01 for value in amounts):
+                    raise SuiteBlocked(f"Resume found a non-zero balance on {expected_name}.")
+
+        await ctx.go("stock")
+        stock_rows = ctx.page.locator("tbody tr")
+        piece_name = f"RUN-{resume_id}-Piece"
+        if await stock_rows.count() != 1 or await stock_rows.filter(has_text=piece_name).count() != 1:
+            raise SuiteBlocked("Resume requires exactly the single Piece product from the interrupted run.")
+        if abs(await ctx.stock(piece_name)) > 0.001:
+            raise SuiteBlocked("Resume found stock on the existing Piece product; expected zero before purchases.")
+
+        await ctx.go("history")
+        for history_tab in ("Purchases", "Sales"):
+            await ctx.session.click(ctx.page.get_by_role("button", name=history_tab, exact=True))
+            if await ctx.page.locator("tbody tr").filter(has_text=f"RUN-{resume_id}-").count():
+                raise SuiteBlocked(f"Resume found existing {history_tab.casefold()} transactions.")
+        await ctx.go("returns")
+        if await ctx.page.locator("tbody tr").filter(has_text=f"RUN-{resume_id}-").count():
+            raise SuiteBlocked("Resume found existing return records.")
+        return "Verified the interrupted run's exact setup: five zero-balance accounts and one zero-stock Piece product; safe to resume."
+
     if sales or profit or transactions or products:
         raise SuiteBlocked(
             "The configured shop is not fresh/empty. No test records were created. "

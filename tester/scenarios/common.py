@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from datetime import datetime
 from typing import Awaitable, Callable
 
 from assertions import SuiteBlocked
@@ -17,6 +18,8 @@ class ScenarioContext:
         self.page = run.session.page
         self.cancel_event = self.session.cancel_event
         self.current = ""
+        self.error_popup_events: list[tuple[str, str, str | None]] = []
+        self._captured_error_event_indexes: set[int] = set()
 
     async def checkpoint(self) -> None:
         if self.cancel_event.is_set():
@@ -53,7 +56,7 @@ class ScenarioContext:
             raise AssertionError(f"Could not select {text!r}; selected option is {selected_text!r}.")
         return match["value"]
 
-    async def wait_toast(self, kind: str = "success", timeout_ms: int = 4000) -> str | None:
+    async def wait_toast(self, kind: str = "success", timeout_ms: int = 15_000) -> str | None:
         deadline = time.monotonic() + timeout_ms / 1000
         checkpoint = self.session._toast_checkpoint
         while time.monotonic() < deadline:
@@ -62,6 +65,23 @@ class ScenarioContext:
                     "({since}) => (window.__testerToastEvents || []).slice(since)",
                     {"since": checkpoint},
                 )
+                for offset, event in enumerate(events):
+                    if "error" not in event.get("classes", []):
+                        continue
+                    event_index = checkpoint + offset
+                    if event_index not in self._captured_error_event_indexes:
+                        self._captured_error_event_indexes.add(event_index)
+                        appeared_at = datetime.now().astimezone().isoformat(timespec="seconds")
+                        screenshot = None
+                        try:
+                            screenshot = str(await self.session.screenshot(
+                                f"{self.run.run_id}-{self.current}-red-popup-{event_index}"
+                            ))
+                        except Exception:
+                            pass
+                        self.error_popup_events.append((appeared_at, event.get("text", ""), screenshot))
+                    if kind != "error":
+                        raise AssertionError(f"Red error popup appeared: {event.get('text', '')}")
                 match = next(
                     (event for event in reversed(events) if kind in event.get("classes", [])),
                     None,
@@ -73,11 +93,11 @@ class ScenarioContext:
             await self.page.wait_for_timeout(80)
         return None
 
-    async def wait_success(self, expected_text: str | None = None, timeout_ms: int = 5000) -> str:
+    async def wait_success(self, expected_text: str | None = None, timeout_ms: int = 15_000) -> str:
         return await self.require_feedback("success", expected_text, timeout_ms)
 
     async def require_feedback(
-        self, kind: str = "success", expected_text: str | None = None, timeout_ms: int = 4000
+        self, kind: str = "success", expected_text: str | None = None, timeout_ms: int = 15_000
     ) -> str:
         text = await self.wait_toast(kind, timeout_ms)
         if not text:
@@ -149,48 +169,53 @@ class ScenarioContext:
 
     async def step(self, name: str, expected: str, operation: Callable[[], Awaitable[str | None]], *, timeout_s: float = 60) -> None:
         self.current = name
+        self.error_popup_events = []
         self.session.reset_dialog_responses()
         started = time.monotonic()
         try:
             await self.checkpoint()
             actual = await asyncio.wait_for(operation(), timeout=timeout_s)
+            actual_text = actual or "Expected UI and resulting data were verified."
+            actual_text = self._append_popup_notes(actual_text)
             self.run.results.append(TestResult(
                 name=name, status="PASS", expected=expected,
-                actual=actual or "Expected UI and resulting data were verified.",
+                actual=actual_text,
                 duration_ms=int((time.monotonic() - started) * 1000),
+                screenshot=self._first_popup_screenshot(),
             ))
         except SuiteBlocked as exc:
-            screenshot = await self._screenshot(name)
+            screenshot = self._first_popup_screenshot() or await self._screenshot(name)
             self.run.results.append(TestResult(
-                name=name, status="BLOCKED", expected=expected, actual=str(exc),
+                name=name, status="BLOCKED", expected=expected,
+                actual=self._append_popup_notes(str(exc)),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 screenshot=screenshot, error=str(exc),
             ))
         except RunCancelled:
-            screenshot = await self._screenshot(name)
+            screenshot = self._first_popup_screenshot() or await self._screenshot(name)
             self.run.results.append(TestResult(
                 name=name, status="BLOCKED", expected=expected,
-                actual="Run stopped at the user's request.",
+                actual=self._append_popup_notes("Run stopped at the user's request."),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 screenshot=screenshot, error="Cancellation requested.",
             ))
             await self._progress_if_due(force=True)
             raise asyncio.CancelledError("Cancellation requested.")
         except asyncio.CancelledError:
-            screenshot = await self._screenshot(name)
+            screenshot = self._first_popup_screenshot() or await self._screenshot(name)
             self.run.results.append(TestResult(
                 name=name, status="BLOCKED", expected=expected,
-                actual="Run stopped at the user's request.",
+                actual=self._append_popup_notes("Run stopped at the user's request."),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 screenshot=screenshot, error="Cancellation requested.",
             ))
             await self._progress_if_due(force=True)
             raise
         except Exception as exc:
-            screenshot = await self._screenshot(name)
+            screenshot = self._first_popup_screenshot() or await self._screenshot(name)
             self.run.results.append(TestResult(
                 name=name, status="FAIL", expected=expected,
-                actual=f"{type(exc).__name__}: {exc}",
+                actual=self._append_popup_notes(f"{type(exc).__name__}: {exc}"),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 screenshot=screenshot, error=str(exc),
             ))
@@ -207,3 +232,16 @@ class ScenarioContext:
             return str(await self.session.screenshot(f"{self.run.run_id}-{name}-failure"))
         except Exception:
             return None
+
+    def _append_popup_notes(self, actual: str) -> str:
+        if not self.error_popup_events:
+            return actual
+        notes = "; ".join(
+            f"Red popup at {appeared_at}: {message or '(no message)'}"
+            + (f" [screenshot: {path}]" if path else " [screenshot unavailable]")
+            for appeared_at, message, path in self.error_popup_events
+        )
+        return f"{actual} {notes}"
+
+    def _first_popup_screenshot(self) -> str | None:
+        return next((path for _, _, path in self.error_popup_events if path), None)

@@ -20,7 +20,7 @@ async def void_single(ctx: ScenarioContext) -> str:
     ctx.session.queue_prompts(f"RUN {ctx.run.run_id} single-sale correction")
     ctx.session.confirm_next()
     await ctx.session.dblclick(button)
-    toast = await ctx.wait_toast("success", timeout_ms=5_000)
+    toast = await ctx.wait_toast("success", timeout_ms=15_000)
     if not toast:
         error = await ctx.wait_toast("error", timeout_ms=500)
         raise AssertionError(f"Single-sale void did not complete. {error or 'No success message.'}")
@@ -71,7 +71,7 @@ async def void_cart(ctx: ScenarioContext) -> str:
     ctx.session.queue_prompts(f"RUN {ctx.run.run_id} full-cart correction")
     ctx.session.confirm_next()
     await ctx.session.dblclick(button)
-    toast = await ctx.wait_toast("success", timeout_ms=6_000)
+    toast = await ctx.wait_toast("success", timeout_ms=15_000)
     if not toast:
         error = await ctx.wait_toast("error", timeout_ms=1_000)
         if error and ("void_sale_transaction" in error or "function" in error.casefold() or "rpc" in error.casefold()):

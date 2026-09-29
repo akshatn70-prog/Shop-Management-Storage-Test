@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,12 @@ class RunReport:
         if issues:
             lines.append("Issues:")
             lines.extend(f"- {test.name}: {(test.error or test.actual)[:240]}" for test in issues)
+        popup_tests = [test for test in self.tests if "Red popup at " in test.actual]
+        if popup_tests:
+            lines.append("Red popups captured:")
+            for test in popup_tests:
+                notes = re.findall(r"Red popup at ([^;]+)", test.actual)
+                lines.extend(f"- {test.name}: red popup at {note.strip()}" for note in notes)
         return "\n".join(lines)
 
 

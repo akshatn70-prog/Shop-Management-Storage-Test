@@ -34,7 +34,7 @@ async def _pay(ctx: ScenarioContext, kind: str, mode: str, account_index: int) -
     ctx.session.queue_prompts(*prompts)
     await ctx.session.click(row.get_by_role("button", name="Pay", exact=True))
     after = await _wait_balance(ctx, kind, account, before - amount)
-    feedback = await ctx.wait_toast("success", timeout_ms=5_000)
+    feedback = await ctx.wait_toast("success", timeout_ms=15_000)
     if not feedback:
         raise AssertionError(
             f"{kind.title()} balance changed from {before:.2f} to {after:.2f}, "

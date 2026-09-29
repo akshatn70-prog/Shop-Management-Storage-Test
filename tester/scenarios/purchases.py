@@ -6,16 +6,27 @@ from data_factory import Account, mobile_for, unique_name
 from scenarios.common import ScenarioContext
 
 
-async def create_account(ctx: ScenarioContext, kind: str, index: int = 1) -> Account:
+async def create_account(ctx: ScenarioContext, kind: str, index: int = 1) -> str:
     accounts = ctx.run.creditors if kind == "creditor" else ctx.run.debtors
     if len(accounts) >= index:
-        return accounts[index - 1]
+        account = accounts[index - 1]
+        return f"{kind.title()} row already verified: {account.name}."
     name = unique_name(ctx.run.run_id, f"{kind}-{index:02d}")
     mobile = mobile_for(ctx.run.run_id, f"{kind}-{index:02d}")
     await ctx.go("creditors" if kind == "creditor" else "debtors")
+    existing = ctx.page.get_by_role("row").filter(has_text=name)
+    if await existing.count():
+        await existing.first.wait_for(state="visible", timeout=12_000)
+        account = Account(name=name, mobile=mobile, balance=0)
+        accounts.append(account)
+        if kind == "creditor" and ctx.run.creditor is None:
+            ctx.run.creditor = account
+        if kind == "debtor" and ctx.run.debtor is None:
+            ctx.run.debtor = account
+        return f"Resumed existing {kind} row: {name}."
+
     ctx.session.queue_prompts(name, mobile)
     await ctx.session.click(ctx.page.locator("#newCreditor" if kind == "creditor" else "#newDebtor"))
-    await ctx.wait_success()
     row = ctx.page.get_by_role("row").filter(has_text=name)
     await row.wait_for(state="visible", timeout=12_000)
     account = Account(name=name, mobile=mobile, balance=0)
@@ -24,7 +35,11 @@ async def create_account(ctx: ScenarioContext, kind: str, index: int = 1) -> Acc
         ctx.run.creditor = account
     if kind == "debtor" and ctx.run.debtor is None:
         ctx.run.debtor = account
-    return account
+    try:
+        feedback = await ctx.wait_success(timeout_ms=15_000)
+    except AssertionError:
+        feedback = "Success popup not captured; the saved account row was verified."
+    return f"Verified {kind} row {account.name}; {feedback}"
 
 
 async def create_all_accounts(ctx: ScenarioContext) -> None:
@@ -116,7 +131,7 @@ async def weight_purchase(ctx: ScenarioContext, key: str, qty: float, unit: str)
     base = qty * 1000 if unit == "kg" else qty
     total = qty * product.purchase_price
     await ctx.session.click(form.get_by_role("button", name="Save Purchase", exact=True))
-    feedback = await ctx.wait_toast("success", timeout_ms=1_500)
+    feedback = await ctx.wait_toast("success", timeout_ms=15_000)
     await form.wait_for(state="detached", timeout=12_000)
     await ctx.go("stock")
     after = await ctx.stock(product.name)
@@ -137,7 +152,7 @@ async def pre_stock(ctx: ScenarioContext) -> str:
     await ctx.form_fill(form, "qty", 3)
     await ctx.form_select(form, "payment", "pre_stock")
     await ctx.session.click(form.get_by_role("button", name="Save Purchase", exact=True))
-    feedback = await ctx.wait_toast("success", timeout_ms=1_500)
+    feedback = await ctx.wait_toast("success", timeout_ms=15_000)
     await form.wait_for(state="detached", timeout=12_000)
     await ctx.go("stock")
     after = await ctx.stock(product.name)

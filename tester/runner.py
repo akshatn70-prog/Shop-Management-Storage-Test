@@ -35,7 +35,7 @@ async def run_suite(progress_callback=None, cancel_event: asyncio.Event | None =
     report_dir = _setting_path("REPORT_DIR", "tester/reports")
     screenshot_dir = _setting_path("SCREENSHOT_DIR", "tester/screenshots")
     started = datetime.now().astimezone()
-    run_id = make_run_id(started)
+    run_id = os.getenv("RESUME_RUN_ID", "").strip() or make_run_id(started)
     results: list[TestResult] = []
     run = RunContext(session=None, run_id=run_id, results=results, progress_callback=progress_callback)
     session = None
