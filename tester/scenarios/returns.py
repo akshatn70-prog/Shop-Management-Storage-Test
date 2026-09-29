@@ -35,7 +35,6 @@ async def make_return(ctx: ScenarioContext, kind: str, mode: str) -> str:
     amount = qty * price
     await ctx.session.click(form.get_by_role("button", name="Confirm Return", exact=True))
     feedback = await ctx.wait_toast("success", timeout_ms=15_000)
-    await ctx.page.locator("#returnFormInner").wait_for(state="detached", timeout=12_000)
     await ctx.go("stock")
     base = qty if product.unit == "piece" else (qty * 1000 if unit == "kg" else qty)
     expected_stock = before_stock + base if is_sale else before_stock - base

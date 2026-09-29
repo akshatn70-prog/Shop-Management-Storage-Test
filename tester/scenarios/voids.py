@@ -30,8 +30,8 @@ async def void_single(ctx: ScenarioContext) -> str:
         raise AssertionError(f"Single void should restore one piece: {before} → {after}.")
     await ctx.go("history")
     visible_rows = ctx.page.get_by_role("row").filter(has_text=product.name)
-    if await visible_rows.count() == 0:
-        raise AssertionError("Voided sale unexpectedly removed the product's other history.")
+    if await visible_rows.locator(".void-sale").count():
+        raise AssertionError("The voided sale still has an active void action in History.")
     return f"Stock restored once, {before} → {after}; success: {toast}"
 
 

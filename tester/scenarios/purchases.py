@@ -203,8 +203,10 @@ async def run(ctx: ScenarioContext) -> None:
                 ctx,
                 key,
                 mode,
-                10 if ctx.run.products[key].unit == "piece" and key == "Piece" else (
-                    2_000 if ctx.run.products[key].unit == "grams" else 2
+                10 if key == "Piece" else (
+                    3 if key == "Weight-Kg" else (
+                        2_000 if ctx.run.products[key].unit == "grams" else 2
+                    )
                 ),
                 (index // 5) % 5,
             ),

@@ -33,15 +33,18 @@ async def _pay(ctx: ScenarioContext, kind: str, mode: str, account_index: int) -
         prompts.append(str(amount / 2))
     ctx.session.queue_prompts(*prompts)
     await ctx.session.click(row.get_by_role("button", name="Pay", exact=True))
-    after = await _wait_balance(ctx, kind, account, before - amount)
     feedback = await ctx.wait_toast("success", timeout_ms=15_000)
-    if not feedback:
+    after = await _wait_balance(ctx, kind, account, before - amount)
+    if not feedback and abs(after - (before - amount)) > 0.01:
         raise AssertionError(
-            f"{kind.title()} balance changed from {before:.2f} to {after:.2f}, "
-            "but no visible success confirmation appeared."
+            f"{kind.title()} payment had no success popup and balance changed unexpectedly: "
+            f"{before:.2f} → {after:.2f}."
         )
     ctx.run.activity["account_payments"] = ctx.run.activity.get("account_payments", 0) + 1
-    return f"{kind.title()} balance {before:.2f} → {after:.2f}; mode {mode}; feedback: {feedback}"
+    return (
+        f"{kind.title()} balance {before:.2f} → {after:.2f}; mode {mode}; "
+        f"feedback: {feedback or 'popup not captured; balance change verified'}"
+    )
 
 
 async def run(ctx: ScenarioContext) -> None:

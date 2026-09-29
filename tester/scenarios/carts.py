@@ -146,12 +146,12 @@ async def run(ctx: ScenarioContext) -> None:
 
 async def invalid_split_payment(ctx: ScenarioContext) -> str:
     piece = ctx.run.products["Piece"]
-    weight = ctx.run.products["Weight-Kg"]
+    weight = ctx.run.products["Weight-Gram"]
     await ctx.go("stock")
     piece_before = await ctx.stock(piece.name)
     weight_before = await ctx.stock(weight.name)
     await add_cart_item(ctx, "Piece", 1, "piece")
-    await add_cart_item(ctx, "Weight-Kg", 100, "grams")
+    await add_cart_item(ctx, "Weight-Gram", 100, "grams")
     total = _item_total(piece, 1, "piece")[1] + _item_total(weight, 100, "grams")[1]
     await ctx.go("cart")
     form = ctx.page.locator("#cartPay")
