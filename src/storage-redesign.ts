@@ -936,6 +936,25 @@ function returnForm(type:"purchase"|"sale"){
  f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:saleTotal(p,base,price),payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render();notify("Return recorded.","success")});calc();
 }
 let quantityStepperObserver:MutationObserver|null=null;
+let quantityStepperEventsBound=false;
+
+function changeQuantityByOne(input:HTMLInputElement,direction:-1|1){
+ if(input.readOnly||input.disabled)return;
+ const currentText=input.value.trim();
+ const parsed=Number(currentText);
+ const current=Number.isFinite(parsed)?parsed:0;
+ const minValue=Number(input.min);
+ const maxValue=Number(input.max);
+ const min=Number.isFinite(minValue)?minValue:-Infinity;
+ const max=Number.isFinite(maxValue)?maxValue:Infinity;
+ let next=current+direction;
+ if(next<min)next=min;
+ if(next>max)next=max;
+ const decimals=(currentText.split(".")[1]||"").length;
+ input.value=decimals?next.toFixed(decimals):String(next);
+ input.dispatchEvent(new Event("input",{bubbles:true}));
+}
+
 function bindQuantitySteppers(){
  const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"]'));
  inputs.forEach(input=>{
@@ -947,40 +966,42 @@ function bindQuantitySteppers(){
   input.dataset.qtyStepperBound="true";
   parent.insertBefore(wrap,input);
   wrap.appendChild(input);
+
   const make=(direction:-1|1)=>{
    const b=document.createElement("button");
    b.type="button";
    b.className=direction<0?"qty-stepper-btn qty-minus":"qty-stepper-btn qty-plus";
    b.setAttribute("aria-label",direction<0?"Decrease by 1":"Increase by 1");
    b.dataset.qtyStepperFor=input.name||input.id||"number";
+   b.dataset.qtyStepperDirection=String(direction);
+   b.tabIndex=-1;
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
-   b.addEventListener("click",(event)=>{
-    event.preventDefault();
-    event.stopPropagation();
-    if(input.readOnly||input.disabled)return;
-    const currentText=input.value.trim();
-    const current=Number(currentText);
-    const currentValue=Number.isFinite(current)?current:0;
-    const minAttr=Number(input.min);
-    const maxAttr=Number(input.max);
-    const min=Number.isFinite(minAttr)?minAttr:-Infinity;
-    const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
-    // The control changes the EXISTING value by exactly one unit.
-    // It never uses min as the new value, so 1 + = 2 and 1 - = 0.
-    let next=currentValue+direction;
-    if(next<min)next=min;
-    if(next>max)next=max;
-    const decimals=(currentText.split(".")[1]||"").length;
-    input.value=decimals?next.toFixed(decimals):String(next);
-    input.dispatchEvent(new Event("input",{bubbles:true}));
-   });
    return b;
   };
+
   const minus=make(-1),plus=make(1);
   wrap.insertBefore(minus,input);
   wrap.appendChild(plus);
  });
+
+ if(!quantityStepperEventsBound){
+  quantityStepperEventsBound=true;
+  app.addEventListener("click",(event)=>{
+   const target=event.target as HTMLElement|null;
+   const button=target?.closest<HTMLButtonElement>(".qty-stepper-btn");
+   if(!button||!app.contains(button))return;
+   event.preventDefault();
+   event.stopPropagation();
+   const direction=Number(button.dataset.qtyStepperDirection);
+   if(direction!==-1&&direction!==1)return;
+   const wrap=button.closest(".qty-stepper");
+   const input=wrap?.querySelector<HTMLInputElement>('input[type="number"]');
+   if(!input)return;
+   changeQuantityByOne(input,direction);
+  },true);
+ }
 }
+
 function ensureQuantityStepperObserver(){
  if(quantityStepperObserver||!app)return;
  quantityStepperObserver=new MutationObserver(mutations=>{
