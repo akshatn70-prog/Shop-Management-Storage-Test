@@ -1049,17 +1049,6 @@ function ensureQuantityStepperObserver(){
  quantityStepperObserver.observe(app,{childList:true,subtree:true});
 }
 
-function ensureQuantityStepperObserver(){
- if(quantityStepperObserver||!app)return;
- quantityStepperObserver=new MutationObserver(mutations=>{
-  const hasNewInput=mutations.some(m=>Array.from(m.addedNodes).some(node=>{
-   if(!(node instanceof HTMLElement))return false;
-   return node.matches('input[type="number"]')||!!node.querySelector('input[type="number"]');
-  }));
-  if(hasNewInput)bindQuantitySteppers();
- });
- quantityStepperObserver.observe(app,{childList:true,subtree:true});
-}
 function fitDashboardMetricValues(){
  const values=document.querySelectorAll<HTMLElement>(".dashboard-metrics .metric-value,.today-page .metric-value");
  values.forEach(value=>{
