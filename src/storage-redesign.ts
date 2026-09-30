@@ -988,8 +988,33 @@ function bindSettings(){
  const r=await supabase.rpc("clear_all_shop_data_v2");if(r.error)throw r.error;
  let photoCleanupError:any=null;
  try{
-  const photoCleanup=await supabase.storage.from(PRODUCT_PHOTO_BUCKET).emptyBucket();
-  if(photoCleanup.error)photoCleanupError=photoCleanup.error;
+  const photoBucket=supabase.storage.from(PRODUCT_PHOTO_BUCKET);
+  const collectPhotoPaths=async(prefix:string):Promise<string[]>=>{
+   const paths:string[]=[];
+   const folders:string[]=[];
+   let offset=0;
+   while(true){
+    const listed=await photoBucket.list(prefix,{limit:1000,offset,sortBy:{column:"name",order:"asc"}});
+    if(listed.error)throw listed.error;
+    const entries=listed.data||[];
+    for(const entry of entries){
+     const fullPath=prefix?prefix+"/"+entry.name:entry.name;
+     if(entry.id===null)folders.push(fullPath);else paths.push(fullPath);
+    }
+    if(entries.length<1000)break;
+    offset+=entries.length;
+   }
+   for(const folder of folders){
+    const nested=await collectPhotoPaths(folder);
+    paths.push(...nested);
+   }
+   return paths;
+  };
+  const photoPaths=await collectPhotoPaths("");
+  for(let i=0;i<photoPaths.length;i+=1000){
+   const removed=await photoBucket.remove(photoPaths.slice(i,i+1000));
+   if(removed.error)throw removed.error;
+  }
  }catch(storageErr){photoCleanupError=storageErr}
  await loadData();render();
  if(photoCleanupError)notify("All shop data was cleared, but product photo Storage cleanup failed. Please use Clear All again to retry photo cleanup.","error");
