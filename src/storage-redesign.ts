@@ -707,17 +707,24 @@ function bindSettings(){
  document.querySelector("#verifyDb")?.addEventListener("click",async()=>{
   const btn=document.querySelector<HTMLButtonElement>("#verifyDb");
   if(btn)btn.disabled=true;
+  const originalText=btn?.textContent||"Verify Database";
+  if(btn)btn.textContent="Verifying...";
   try{
    const r=await verifyAndUpdateDatabase();
+   const version=Number(r?.database_version);
+   if(!Number.isFinite(version))throw new Error("Database verification returned an invalid version.");
    if(r.updated){
     const names=Array.isArray(r.applied)?r.applied.map((x:any)=>"v"+x.version+" "+x.name).join(", "):"";
-    await loadData();
-    notify("Database updated to version "+r.database_version+(names?" • "+names:"")+"." ,"success");
+    notify("Database updated to version "+version+(names?" • "+names:"")+"." ,"success");
+    try{await loadData()}catch(refreshError){notify("Database updated, but refreshing app data failed: "+errorMessage(refreshError),"error")}
    }else{
-    notify("Database is up to date (version "+r.database_version+").","success");
+    notify("Database is up to date (version "+version+").","success");
    }
   }catch(e){notify(errorMessage(e),"error")}
-  finally{if(btn)btn.disabled=false}
+  finally{
+   const current=document.querySelector<HTMLButtonElement>("#verifyDb");
+   if(current){current.disabled=false;current.textContent=originalText}
+  }
 });
  document.querySelector("#downloadSqlSettingsBtn")?.addEventListener("click",async()=>{try{const r=await fetch("/shop-management-final.sql");if(!r.ok)throw new Error("SQL file unavailable.");downloadText("shop-management-final.sql",await r.text());notify("SQL downloaded.","success")}catch(e){notify(e instanceof Error?e.message:String(e),"error")}});
  document.querySelector("#downloadConnectionBtn")?.addEventListener("click",async()=>{const c=readConn();if(!c.url||!c.key)return notify("Supabase URL and publishable key are not available on this device.","error");const content=["SHOP MANAGEMENT — SUPABASE CONNECTION","", "Supabase Project URL: "+c.url, "Supabase Publishable Key: "+c.key, "", "Keep this file private. The publishable key is intended for the client app, but the file contains your shop connection details."].join("\n");await downloadText("ShopManagement_URL_and_Key.txt",content)});
