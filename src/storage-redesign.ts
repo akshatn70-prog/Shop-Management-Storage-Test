@@ -65,7 +65,7 @@ const uploadProductPhoto=async(productId:string,file:File)=>{
  const upload=await supabase.storage.from(PRODUCT_PHOTO_BUCKET).upload(path,compressed.blob,{cacheControl:"31536000",contentType:compressed.contentType,upsert:false});if(upload.error)throw upload.error;
  const oldPath=products.find(p=>p.id===productId)?.photo_path||null;
  const saved=await supabase.rpc("set_product_photo",{p_product_id:productId,p_photo_path:path});if(saved.error){await supabase.storage.from(PRODUCT_PHOTO_BUCKET).remove([path]);throw saved.error}
- const product=products.find(p=>p.id===productId);if(product)product.photo_path=path;if(oldPath&&oldPath!==path)await supabase.storage.from(PRODUCT_PHOTO_BUCKET).remove([oldPath]);return productPhotoUrl(path);
+ const product=products.find(p=>p.id===productId);if(product)product.photo_path=path;if(oldPath&&oldPath!==path)await supabase.storage.from(PRODUCT_PHOTO_BUCKET).remove([oldPath]);return path;
 };
 const removeProductPhoto=async(productId:string)=>{
  if(demo)throw new Error("Photos are not available in demo mode.");if(!supabase)throw new Error("Supabase is not connected.");
@@ -411,7 +411,7 @@ function productEditForm(productId:string){
  const f=document.querySelector<HTMLFormElement>("#productEditForm")!;
  const editPhotoInput=document.querySelector("#editProductPhotoInput") as HTMLInputElement,editPhotoRemove=document.querySelector("#editProductPhotoRemove") as HTMLButtonElement;
  editPhotoInput.addEventListener("change",async()=>{const file=editPhotoInput.files?.[0];if(!file)return;try{editPhotoRemove.disabled=true;await uploadProductPhoto(p.id,file);document.querySelector("#editProductPhoto .product-photo-stage")!.innerHTML=productPhotoMarkup(p);editPhotoRemove.disabled=false;notify("Product photo updated.","success")}catch(err){notify(errorMessage(err),"error")}finally{editPhotoInput.value=""}});
- editPhotoRemove.addEventListener("click",async()=>{if(!p.photo_path)return;if(!window.confirm("Remove this product photo?"))return;try{await removeProductPhoto(p.id);document.querySelector("#editProductPhoto .product-photo-stage")!.innerHTML=productPhotoMarkup(p);editPhotoRemove.disabled=true;notify("Product photo removed.","success")}catch(err){notify(errorMessage(err),"error")});
+ editPhotoRemove.addEventListener("click",async()=>{if(!p.photo_path)return;if(!window.confirm("Remove this product photo?"))return;try{await removeProductPhoto(p.id);document.querySelector("#editProductPhoto .product-photo-stage")!.innerHTML=productPhotoMarkup(p);editPhotoRemove.disabled=true;notify("Product photo removed.","success")}catch(err){notify(errorMessage(err),"error")}});
  const weightUnitEl=f.elements.namedItem("weightUnit") as HTMLSelectElement,buyEl=f.elements.namedItem("purchase") as HTMLInputElement,sellEl=f.elements.namedItem("sale") as HTMLInputElement;
  weightUnitEl?.addEventListener("change",()=>{if(p.unit_type!=="weight")return;const oldUnit=p.weight_price_unit||"kg",nextUnit=weightUnitEl.value;if(oldUnit===nextUnit)return;const factor=oldUnit==="kg"&&nextUnit==="grams"?1/1000:1000;buyEl.value=(Number(buyEl.value||0)*factor).toFixed(4);sellEl.value=(Number(sellEl.value||0)*factor).toFixed(4)});
  document.querySelector("#cancelProductEdit")?.addEventListener("click",()=>{h.innerHTML=""});
@@ -649,11 +649,11 @@ function productForm(){
   }
   const r=await supabase!.rpc("create_product_with_price_unit",{p_name:name,p_unit_type:unitType,p_opening_stock_base:0,p_purchase_price:buy,p_selling_price:sell,p_low_stock_threshold_base:low,p_weight_price_unit:weightPriceUnit});
   if(r.error)return notify(errorMessage(r.error),"error");
-  const productId=r.data as string;
-  if(pendingPhoto){try{await uploadProductPhoto(productId,pendingPhoto)}catch(err){await supabase!.rpc("delete_product",{p_product_id:productId});return notify("Product was not added because its photo could not be uploaded: "+errorMessage(err),"error")}}
+  const productId=r.data as string;let createdPhotoPath:string|null=null;
+  if(pendingPhoto){try{createdPhotoPath=await uploadProductPhoto(productId,pendingPhoto)}catch(err){await supabase!.rpc("delete_product",{p_product_id:productId});return notify("Product was not added because its photo could not be uploaded: "+errorMessage(err),"error")}}
   if(base>0){
    const purchase=await supabase!.rpc("add_inventory_purchase",{p_product_id:productId,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:unit==="piece"?"piece":unit,p_purchase_price:buy,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
-   if(purchase.error){const created=products.find(x=>x.id===productId);if(created?.photo_path)await supabase!.storage.from(PRODUCT_PHOTO_BUCKET).remove([created.photo_path]);await supabase!.rpc("delete_product",{p_product_id:productId});return notify(errorMessage(purchase.error),"error")}
+   if(purchase.error){const created=products.find(x=>x.id===productId);if(createdPhotoPath)await supabase!.storage.from(PRODUCT_PHOTO_BUCKET).remove([createdPhotoPath]);await supabase!.rpc("delete_product",{p_product_id:productId});return notify(errorMessage(purchase.error),"error")}
   }
   await loadData();render();notify("Product added.","success")
  });
