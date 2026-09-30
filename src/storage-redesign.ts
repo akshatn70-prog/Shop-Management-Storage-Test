@@ -948,24 +948,49 @@ let quantityStepperObserver:MutationObserver|null=null;
 let quantityStepperEventsBound=false;
 
 function changeQuantityByOne(input:HTMLInputElement,direction:-1|1){
- // Universal numeric stepper rule: every click is exactly +/- 1.
- // Never use the HTML step attribute and never reset an existing value.
+ // Universal stepper contract:
+ //  • every click is exactly +1 or -1
+ //  • the current value is always the starting value
+ //  • HTML step is never used for the calculation
+ //  • a form reset must not put the field back to its old value
+ //  • zero is the lower bound unless the field explicitly has another min
  if(input.readOnly||input.disabled)return;
  const currentText=input.value.trim();
  const parsed=Number(currentText);
  const current=Number.isFinite(parsed)?parsed:0;
- const minValue=Number(input.min);
- const maxValue=Number(input.max);
- const min=Number.isFinite(minValue)?minValue:0;
- const max=Number.isFinite(maxValue)?maxValue:Infinity;
+ const minAttr=input.getAttribute("min");
+ const maxAttr=input.getAttribute("max");
+ const minParsed=minAttr===null||minAttr.trim()===""?0:Number(minAttr);
+ const maxParsed=maxAttr===null||maxAttr.trim()===""?Infinity:Number(maxAttr);
+ const min=Number.isFinite(minParsed)?minParsed:0;
+ const max=Number.isFinite(maxParsed)?maxParsed:Infinity;
  let next=current+direction;
  if(next<min)next=min;
  if(next>max)next=max;
  const decimals=(currentText.split(".")[1]||"").length;
- input.value=decimals?next.toFixed(decimals):String(next);
- // Only input is emitted so field listeners update without triggering a form-level
- // change/reset path. The existing value is always the base for +/- 1.
+ const nextText=decimals?next.toFixed(decimals):String(next);
+
+ // Set both the live value and the default value. This makes the operation
+ // resistant to any form.reset()/implicit reset that may happen in another
+ // listener during the same click.
+ input.value=nextText;
+ input.defaultValue=nextText;
+
+ // Notify the field's existing calculation logic, but never use change/reset.
  input.dispatchEvent(new Event("input",{bubbles:true}));
+
+ // If another synchronous listener reset the same field, immediately restore
+ // the exact stepped result. A microtask also catches reset-after-listener code.
+ if(input.isConnected&&input.value!==nextText){
+  input.value=nextText;
+  input.defaultValue=nextText;
+ }
+ queueMicrotask(()=>{
+  if(input.isConnected&&input.value!==nextText){
+   input.value=nextText;
+   input.defaultValue=nextText;
+  }
+ });
 }
 
 function bindQuantitySteppers(){
@@ -989,6 +1014,20 @@ function bindQuantitySteppers(){
    b.dataset.qtyStepperDirection=String(direction);
    b.tabIndex=-1;
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
+
+   // Handle the button itself. Do not let the click bubble into a form or
+   // another generic button handler that could submit/reset the form.
+   b.addEventListener("pointerdown",(event)=>{
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+   },true);
+   b.addEventListener("click",(event)=>{
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    changeQuantityByOne(input,direction);
+   },true);
    return b;
   };
 
@@ -996,23 +1035,18 @@ function bindQuantitySteppers(){
   wrap.insertBefore(minus,input);
   wrap.appendChild(plus);
  });
+}
 
- if(!quantityStepperEventsBound){
-  quantityStepperEventsBound=true;
-  app.addEventListener("click",(event)=>{
-   const target=event.target as HTMLElement|null;
-   const button=target?.closest<HTMLButtonElement>(".qty-stepper-btn");
-   if(!button||!app.contains(button))return;
-   event.preventDefault();
-   event.stopPropagation();
-   const direction=Number(button.dataset.qtyStepperDirection);
-   if(direction!==-1&&direction!==1)return;
-   const wrap=button.closest(".qty-stepper");
-   const input=wrap?.querySelector<HTMLInputElement>('input[type="number"]');
-   if(!input)return;
-   changeQuantityByOne(input,direction);
-  },true);
- }
+function ensureQuantityStepperObserver(){
+ if(quantityStepperObserver||!app)return;
+ quantityStepperObserver=new MutationObserver(mutations=>{
+  const hasNewInput=mutations.some(m=>Array.from(m.addedNodes).some(node=>{
+   if(!(node instanceof HTMLElement))return false;
+   return node.matches('input[type="number"]')||!!node.querySelector('input[type="number"]');
+  }));
+  if(hasNewInput)bindQuantitySteppers();
+ });
+ quantityStepperObserver.observe(app,{childList:true,subtree:true});
 }
 
 function ensureQuantityStepperObserver(){
