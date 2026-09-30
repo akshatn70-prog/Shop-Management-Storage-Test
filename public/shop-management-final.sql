@@ -208,6 +208,8 @@ create table if not exists public.shop_settings (
   shop_name text not null default 'My Shop',
   currency text not null default 'INR',
   timezone text not null default 'Asia/Kolkata',
+  theme text not null default 'current'
+    check (theme in ('current','light-pink','pink')),
   dashboard_reset_time text not null default '00:00'
     check (dashboard_reset_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
   allow_below_cost_sales boolean not null default true,
