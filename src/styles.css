@@ -1334,3 +1334,21 @@ th{font-size:7px}
   .page{padding:20px}
   .dashboard-metrics{grid-template-columns:repeat(3,1fr)!important}
 }
+
+.ui-icon-calendar-days,.ui-icon-chart-no-axes-combined,.ui-icon-users,.ui-icon-clipboard-check,.ui-icon-settings,.ui-icon-store,.ui-icon-log-out,.ui-icon-x{
+  -webkit-mask-image:none!important;
+  mask-image:none!important;
+  background:none!important;
+  display:inline-grid;
+  place-items:center;
+  font-style:normal;
+  font-weight:800;
+}
+.ui-icon-calendar-days::after{content:"▦";font-size:15px}
+.ui-icon-chart-no-axes-combined::after{content:"⌁";font-size:19px}
+.ui-icon-users::after{content:"♙";font-size:18px}
+.ui-icon-clipboard-check::after{content:"✓";font-size:15px}
+.ui-icon-settings::after{content:"⚙";font-size:16px}
+.ui-icon-store::after{content:"▣";font-size:16px}
+.ui-icon-log-out::after{content:"↪";font-size:17px}
+.ui-icon-x::after{content:"×";font-size:22px;font-weight:400}
