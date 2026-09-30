@@ -2153,6 +2153,12 @@ input[type="number"]::-webkit-outer-spin-button{
   box-shadow:none!important;
 }
 .qty-stepper-btn{
+  position:relative;
+  z-index:3;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+  user-select:none;
+  -webkit-user-select:none;
   min-height:44px!important;
   min-width:38px!important;
   width:38px;
