@@ -18,8 +18,3 @@ from public.products p
 where r.product_id=p.id
   and lower(btrim(coalesce(r.product_name_snapshot,'')))='deleted product';
 
-update public.day_end_summary_lines d
-set product_name_snapshot=p.name
-from public.products p
-where d.product_id=p.id
-  and lower(btrim(coalesce(d.product_name_snapshot,'')))='deleted product';
