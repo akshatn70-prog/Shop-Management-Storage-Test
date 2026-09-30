@@ -200,6 +200,51 @@ function shell(title:string){
 }
 
 
+const normalizeSearchText=(value:any)=>String(value??"").toLowerCase().replace(/[^a-z0-9]+/g,"");
+const searchMatches=(haystack:any,query:string)=>{
+ const raw=String(query||"").trim().toLowerCase();
+ if(!raw)return true;
+ const compact=normalizeSearchText(raw);
+ const hay=normalizeSearchText(haystack);
+ if(compact&&hay.includes(compact))return true;
+ const parts=raw.split(/\s+/).map(x=>normalizeSearchText(x)).filter(Boolean);
+ return parts.length>0&&parts.every(x=>hay.includes(x));
+};
+let pendingStockSearch="";
+function homeSearchItems(){
+ const owner=profile?.role==="owner";
+ const items:{label:string;keywords:string;tab:string;action?:string;description:string}[]=[
+  {label:"Home",keywords:"home dashboard today overview",tab:"dashboard",description:"Open dashboard"},
+  {label:"Add Sale",keywords:"sale sell selling new transaction",tab:"sale",description:"Create a sale"},
+  {label:"Cart",keywords:"cart checkout multi item sale",tab:"cart",description:"Open cart"},
+  {label:"Stock",keywords:"stock products inventory item items",tab:"stock",description:"View stock"},
+  {label:"Add Product",keywords:"product products new add create item",tab:"stock",action:"addProduct",description:"Add a product"},
+  {label:"Purchase",keywords:"purchase buy buying stock entry inventory",tab:"stock",action:"purchase",description:"Add a purchase"},
+  {label:"Returns",keywords:"return refund purchase sale",tab:"returns",description:"Open returns"},
+  {label:"Creditors",keywords:"creditor supplier suppliers payable credit payment",tab:"creditors",description:"Open creditors"},
+  {label:"Debtors",keywords:"debtor customer customers receivable credit payment",tab:"debtors",description:"Open debtors"},
+  {label:"History",keywords:"history transactions sales purchases returns records",tab:"history",description:"View transaction history"}
+ ];
+ if(owner){
+  items.push(
+   {label:"Today Stats",keywords:"today stats statistics daily closing day end summary",tab:"today",description:"View today statistics"},
+   {label:"Reports",keywords:"report reports profit revenue financial date wise",tab:"reports",description:"Open reports"},
+   {label:"Workers",keywords:"worker workers staff employees",tab:"workers",description:"Manage workers"},
+   {label:"Audit",keywords:"audit logs activity security records",tab:"audit",description:"View audit logs"},
+   {label:"Settings",keywords:"settings configuration shop preferences",tab:"settings",description:"Open settings"}
+  );
+ }
+ return items;
+}
+function openHomeSearchItem(item:{tab:string;action?:string}){
+ pendingStockSearch="";
+ if(item.action==="addProduct"){activeTab="stock";lowStockOnly=false;render();setTimeout(()=>productForm(),0);return}
+ if(item.action==="purchase"){activeTab="stock";lowStockOnly=false;render();setTimeout(()=>purchaseForm(),0);return}
+ activeTab=item.tab;
+ if(item.tab!=="stock")lowStockOnly=false;
+ render();
+}
+
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+ledger.filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
@@ -211,7 +256,7 @@ function dashboard(){
  debtorLedger.filter(x=>x.type==="payment_made").forEach(x=>{const d=debtors.find(v=>v.id===x.debtor_id);activity.push({type:"Debtor payment",title:String(d?.name||"Debtor"),subtitle:"Debtor payment · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.amount||0),date:x.created_at,mode:String(x.payment_mode||"cash")})});
  activity.sort((a,b)=>new Date(b.date||0).getTime()-new Date(a.date||0).getTime());
  const recent=activity.slice(0,8);
- return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+('<button id="lowStockDashboard" type="button" class="metric metric-button"><span>Low Stock</span><b class="metric-value">'+String(low.length)+' items</b></button>')+m("Pending Dues",money(pending))+'</div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
+ return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="panel home-search-panel"><div class="section-head"><div><h3>Search</h3><small class="muted">Find a menu, action, or product shortcut.</small></div></div><div class="search-row home-search-row"><input id="homeSearch" type="search" autocomplete="off" placeholder="Search products, sales, stock, reports..."><button id="homeSearchBtn" type="button" class="ghost">Search</button></div><div id="homeSearchResults" class="home-search-results"></div></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+('<button id="lowStockDashboard" type="button" class="metric metric-button"><span>Low Stock</span><b class="metric-value">'+String(low.length)+' items</b></button>')+m("Pending Dues",money(pending))+'</div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
 }
 
 
@@ -237,7 +282,7 @@ function stock(){
  const owner=profile?.role==="owner";
  const title=lowStockOnly?"Low Stock":"Stock";
  const subtitle=lowStockOnly?"Products at or below their low-stock limit.":"Current stock and purchase actions.";
- return '<section class="page stock-page"><div class="page-head"><div><h2>'+title+'</h2><p class="muted">'+subtitle+'</p></div><div class="action-row">'+(lowStockOnly?'<button id="showAllStock" class="ghost">Show All Stock</button>':"")+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div id="stockForm"></div><div class="panel stock-list-panel"><div class="search-row stock-search-row"><input id="stockSearch" type="search" placeholder="Search product..."><button id="stockSearchBtn" type="button" class="ghost">Search</button></div><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+products.filter(p=>!lowStockOnly||Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)).map(p=>'<tr class="stock-product-row" data-search="'+esc(p.name.toLowerCase())+'"><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td><td>'+money(p.selling_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div></section>';
+ return '<section class="page stock-page"><div class="page-head"><div><h2>'+title+'</h2><p class="muted">'+subtitle+'</p></div><div class="action-row">'+(lowStockOnly?'<button id="showAllStock" class="ghost">Show All Stock</button>':"")+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div id="stockForm"></div><div class="panel stock-list-panel"><div class="search-row stock-search-row"><input id="stockSearch" type="search" autocomplete="off" placeholder="Search product name or number..."><button id="stockSearchBtn" type="button" class="ghost">Search</button></div><div class="stock-search-status" id="stockSearchStatus"></div><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+products.filter(p=>!lowStockOnly||Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)).map(p=>'<tr class="stock-product-row" data-search="'+esc([p.name,p.id,(p as any).sku,(p as any).barcode,(p as any).product_code].filter(Boolean).join(" ").toLowerCase())+'"><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td><td>'+money(p.selling_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div></section>';
 }
 function productEditForm(productId:string){
  const p=products.find(x=>x.id===productId);if(!p)return notify("Product not found.","error");
@@ -827,7 +872,37 @@ function fitDashboardMetricValues(){
   if("ResizeObserver" in window){const observer=new ResizeObserver(fit);observer.observe(value.parentElement!)}
  });
 }
+function bindHomeSearch(){
+ const input=document.querySelector<HTMLInputElement>("#homeSearch");
+ const results=document.querySelector<HTMLElement>("#homeSearchResults");
+ if(!input||!results)return;
+ const run=()=>{
+  const q=input.value.trim();
+  const menu=homeSearchItems();
+  const menuMatches=q?menu.filter(x=>searchMatches(x.label+" "+x.keywords,q)):menu.slice(0,6);
+  const productMatches=q?products.filter(p=>p.is_active!==false&&searchMatches([p.name,(p as any).sku,(p as any).barcode,(p as any).product_code,p.id].filter(Boolean).join(" "),q)).slice(0,8):[];
+  const rows=[
+   ...menuMatches.slice(0,8).map((x,i)=>'<button type="button" class="home-search-result" data-search-kind="menu" data-search-index="'+i+'"><span class="home-search-result-icon ui-icon ui-icon-'+(x.tab==="dashboard"?"home":x.tab==="sale"?"shopping-cart":x.tab==="stock"?"package":x.tab==="cart"?"shopping-cart":x.tab==="returns"?"rotate-ccw":x.tab==="creditors"?"wallet":x.tab==="debtors"?"wallet-cards":x.tab==="history"?"history":x.tab==="reports"?"chart-no-axes-combined":x.tab==="workers"?"users":x.tab==="audit"?"clipboard-check":"settings")+'"></span><span><b>'+esc(x.label)+'</b><small>'+esc(x.description)+'</small></span><span class="chevron">›</span></button>'),
+   ...productMatches.map((p,i)=>'<button type="button" class="home-search-result" data-search-kind="product" data-product-index="'+i+'"><span class="home-search-result-icon ui-icon ui-icon-package"></span><span><b>'+esc(p.name)+'</b><small>Product shortcut · Open Stock</small></span><span class="chevron">›</span></button>')
+  ];
+  results.innerHTML=rows.length?rows.join(""):'<div class="home-search-empty">No matching menu or product found.</div>';
+  results.querySelectorAll<HTMLButtonElement>(".home-search-result").forEach(btn=>btn.addEventListener("click",()=>{
+   if(btn.dataset.searchKind==="product"){
+    const p=productMatches[Number(btn.dataset.productIndex)];
+    pendingStockSearch=p?.name||"";
+    activeTab="stock";lowStockOnly=false;render();
+    return;
+   }
+   const item=menuMatches[Number(btn.dataset.searchIndex)];
+   if(item)openHomeSearchItem(item);
+  }));
+ };
+ input.addEventListener("input",run);
+ document.querySelector("#homeSearchBtn")?.addEventListener("click",run);
+ run();
+}
 function bind(){
+ if(activeTab==="dashboard")bindHomeSearch();
  document.querySelector("#lowStockDashboard")?.addEventListener("click",()=>{lowStockOnly=true;activeTab="stock";render()});
  document.querySelector("#showAllStock")?.addEventListener("click",()=>{lowStockOnly=false;render()});
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
@@ -861,7 +936,33 @@ function bind(){
  if(activeTab==="history")bindHistory(); if(activeTab==="returns")bindReturns();
  if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
  if(activeTab==="audit")document.querySelector("#auditDate")?.addEventListener("change",e=>{auditDate=(e.currentTarget as HTMLInputElement).value;render()});
- if(activeTab==="stock"){document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);document.querySelector("#addProduct")?.addEventListener("click",productForm);bindStockActions()}
+ if(activeTab==="stock"){
+ if(pendingStockSearch){
+  const pending=pendingStockSearch;
+  pendingStockSearch="";
+  const input=document.querySelector<HTMLInputElement>("#stockSearch");
+  if(input)input.value=pending;
+ }
+ document.querySelector("#addPurchase")?.addEventListener("click",purchaseForm);
+ document.querySelector("#addProduct")?.addEventListener("click",productForm);
+ const applyStockSearch=()=>{
+  const input=document.querySelector<HTMLInputElement>("#stockSearch");
+  const q=(input?.value||"").trim();
+  const rows=Array.from(document.querySelectorAll<HTMLElement>(".stock-product-row"));
+  let visible=0;
+  rows.forEach(row=>{
+   const match=searchMatches(row.dataset.search||"",q);
+   row.classList.toggle("is-hidden",!match);
+   if(match)visible++;
+  });
+  const status=document.querySelector<HTMLElement>("#stockSearchStatus");
+  if(status)status.textContent=q?(visible+" matching product"+(visible===1?"":"s")+" shown"):"Showing all "+rows.length+" products";
+ };
+ document.querySelector("#stockSearch")?.addEventListener("input",applyStockSearch);
+ document.querySelector("#stockSearchBtn")?.addEventListener("click",applyStockSearch);
+ applyStockSearch();
+ bindStockActions();
+}
  if(activeTab==="settings")bindSettings();
 }
 function addSwipeHints(){
