@@ -927,7 +927,7 @@ function returnForm(type:"purchase"|"sale"){
 }
 let quantityStepperObserver:MutationObserver|null=null;
 function bindQuantitySteppers(){
- const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="qty"],input[type="number"][name="quantity"],input[type="number"][name="price"],input[type="number"][name="selling"],input[type="number"][name="purchase"],input[type="number"][name="sale"],input[type="number"][name="low"]'));
+ const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"]'));
  inputs.forEach(input=>{
   if(input.closest(".qty-stepper"))return;
   const wrap=document.createElement("div");
