@@ -18,7 +18,7 @@ let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", his
 let bottomNavScrollLeft=0, reportTableScrollLeft=0;
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
-let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[];
+let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[], lowStockOnly=false;
 const voidingSaleKeys=new Set<string>();
 /**
  * Expected database contract for cart-aware voids:
@@ -31,7 +31,7 @@ const voidingSaleKeys=new Set<string>();
 const CART_VOID_RPC="void_sale_transaction";
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
-const iconForPayment=(mode:string)=>mode==="upi"?"↗":mode==="split"?"⇄":mode==="credit"?"₹":"$";
+const iconForPayment=(mode:string)=>mode==="upi"?"UPI":mode==="split"?"⇄":"₹";
 const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b class="metric-value">'+v+'</b></div>';
 const money=(n:any)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
 const saleTotal=(p:Product|null|undefined,quantityBase:number,sellingPricePerBaseUnit:number)=>{if(p?.unit_type!=="weight")return quantityBase*sellingPricePerBaseUnit;return (p.weight_price_unit||"kg")==="grams"?quantityBase*sellingPricePerBaseUnit:(quantityBase/1000)*sellingPricePerBaseUnit};
@@ -204,7 +204,7 @@ function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+ledger.filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
  const recent=sales.filter(x=>!x.voided).slice(0,4);
- return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Low Stock",String(low.length)+" items")+m("Pending Dues",money(pending))+'</div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Sales</h3><button type="button" data-nav="history" class="link-btn">See All</button></div><div class="recent-sales-list">'+(recent.map((x,i)=>'<div class="recent-sale-row"><span class="recent-sale-icon recent-'+(i%4)+'">'+iconForPayment(String(x.payment_mode||"cash"))+'</span><div class="recent-sale-main"><b>#'+esc(String(x.id||"").slice(-6))+'</b><small>'+esc(fmt(x.sold_at))+'</small></div><div class="recent-sale-total"><b>'+money(x.total_sale)+'</b><small>'+esc(String(x.payment_mode||"cash").toUpperCase())+'</small></div></div>').join("")||'<div class="empty-state">No sales yet.</div>')+'</div></div></section>';
+ return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+('<button id="lowStockDashboard" type="button" class="metric metric-button"><span>Low Stock</span><b class="metric-value">'+String(low.length)+' items</b></button>')+m("Pending Dues",money(pending))+'</div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Sales</h3><button type="button" data-nav="history" class="link-btn">See All</button></div><div class="recent-sales-list">'+(recent.map((x,i)=>'<div class="recent-sale-row"><span class="recent-sale-icon recent-'+(i%4)+'">'+iconForPayment(String(x.payment_mode||"cash"))+'</span><div class="recent-sale-main"><b>Sale</b><small>'+esc(fmt(x.sold_at))+'</small></div><div class="recent-sale-total"><b>'+money(x.total_sale)+'</b><small>'+esc(String(x.payment_mode||"cash").toUpperCase())+'</small></div></div>').join("")||'<div class="empty-state">No sales yet.</div>')+'</div></div></section>';
 }
 
 
@@ -228,7 +228,10 @@ function cart(){
 
 function stock(){
  const owner=profile?.role==="owner";
- return '<section class="page stock-page"><div class="page-head"><div><h2>Stock</h2><p class="muted">Current stock and purchase actions.</p></div><div class="action-row">'+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td><td>'+money(p.selling_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div><div id="stockForm"></div></section>';
+ const visibleProducts=lowStockOnly?products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)):products;
+ const title=lowStockOnly?"Low Stock":"Stock";
+ const subtitle=lowStockOnly?"Products at or below their low-stock limit.":"Current stock and purchase actions.";
+ return '<section class="page stock-page"><div class="page-head"><div><h2>'+title+'</h2><p class="muted">'+subtitle+'</p></div><div class="action-row">'+(lowStockOnly?'<button id="showAllStock" class="ghost">Show All Stock</button>':"")+'+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+visibleProducts.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td><td>'+money(p.selling_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div><div id="stockForm"></div></section>';
 }
 function productEditForm(productId:string){
  const p=products.find(x=>x.id===productId);if(!p)return notify("Product not found.","error");
@@ -819,6 +822,8 @@ function fitDashboardMetricValues(){
  });
 }
 function bind(){
+ document.querySelector("#lowStockDashboard")?.addEventListener("click",()=>{lowStockOnly=true;activeTab="stock";render()});
+ document.querySelector("#showAllStock")?.addEventListener("click",()=>{lowStockOnly=false;render()});
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
  document.querySelector("#moreNav")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.add("open");sheet.setAttribute("aria-hidden","false")}});
  document.querySelector("#closeMore")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.remove("open");sheet.setAttribute("aria-hidden","true")}});

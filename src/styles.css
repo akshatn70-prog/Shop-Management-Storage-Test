@@ -1522,3 +1522,26 @@ th{font-size:7px}
 .dashboard-quick .quick-creditor .quick-icon{
   flex:0 0 18px;
 }
+
+/* Dashboard low-stock metric is a real navigation control, not just a display card. */
+.dashboard-metrics .metric-button{
+  appearance:none;
+  width:100%;
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+  color:inherit;
+  touch-action:manipulation;
+}
+.dashboard-metrics .metric-button:hover{
+  border-color:#e05560;
+  transform:translateY(-1px);
+}
+.dashboard-metrics .metric-button:focus-visible{
+  outline:2px solid #9b7cff;
+  outline-offset:2px;
+}
+.recent-sale-icon{
+  min-width:29px;
+  font-size:10px;
+}
