@@ -237,13 +237,18 @@ async function setupRealtime(){
  for(const table of tables){
   realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},async()=>{
    await loadData();
+   if(activeTab==="reports"&&reportDate)await loadReportDate(reportDate);
    if(activeTab==="today"||activeTab==="reports"||activeTab==="dashboard")render();
   });
  }
  realtimeChannel.subscribe();
  realtimeRefreshTimer=window.setInterval(async()=>{
   if(!profile||demo||!supabase)return;
-  if(activeTab==="today"||activeTab==="reports"){await loadData();render()}
+  if(activeTab==="today"||activeTab==="reports"){
+   await loadData();
+   if(activeTab==="reports"&&reportDate)await loadReportDate(reportDate);
+   render();
+  }
  },5000);
 }
 
