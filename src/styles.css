@@ -2329,3 +2329,17 @@ input[type="number"]::-webkit-inner-spin-button{
   .dashboard-summary-headbar{padding:12px}
   .dashboard-summary-content{padding-left:8px;padding-right:8px}
 }
+
+
+/* Hide the browser's native number arrows inside our custom +/- controls. */
+.qty-stepper>input[type="number"]{
+  -moz-appearance:textfield!important;
+  appearance:textfield!important;
+}
+.qty-stepper>input[type="number"]::-webkit-inner-spin-button,
+.qty-stepper>input[type="number"]::-webkit-outer-spin-button{
+  -webkit-appearance:none!important;
+  appearance:none!important;
+  display:none!important;
+  margin:0!important;
+}
