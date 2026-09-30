@@ -292,7 +292,7 @@ function showDashboardSummary(kind:string){
   if(!rows.length){
    content.innerHTML='<div class="dashboard-summary-empty">No '+esc(title.toLowerCase())+' to show.</div>';
   }else if(kind==="cash"||kind==="upi"){
-   content.innerHTML='<div class="dashboard-summary-head"><span>Sale</span><span>Amount</span><span>Profit</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span><span>'+esc(x.profit||"")+'</span></div>').join("");
+   content.innerHTML='<div class="dashboard-summary-head"><span>Sale</span><span>Amount</span><span>Profit</span></div>'+rows.map((x:any)=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span><span>'+esc(x.profit||"")+'</span></div>').join("");
   }else{
    content.innerHTML='<div class="dashboard-summary-head"><span>Product / Account</span><span>'+esc(kind==="low-stock"?"Stock":"Amount")+'</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span></div>').join("");
   }
