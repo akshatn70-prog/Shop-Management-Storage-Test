@@ -286,7 +286,7 @@ async function setupRealtime(){
  for(const table of tables){
   realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},()=>queueRefresh());
  }
- realtimeChannel.subscribe((status)=>{
+ realtimeChannel.subscribe((status:string)=>{
   if(status!=="SUBSCRIBED")console.warn("Shop Management realtime status:",status);
  });
  realtimeRefreshTimer=window.setInterval(async()=>{
