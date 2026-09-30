@@ -455,10 +455,7 @@ function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+viewLedger().filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
  const activity:{type:string;title:string;subtitle:string;amount:number;date:any;mode?:string;product_id?:string}[]=[];
- const activityProductName=(row:any)=>{
-  const id=row.product_id||row.products?.id;
-  return transactionProductName(row);
- };
+ const activityProductName=(row:any)=>transactionProductName(row);
  viewSales().filter(x=>!x.voided).forEach(x=>activity.push({type:"Sale",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Sale · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_sale||0),date:x.sold_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
  viewPurchases().filter(x=>!x.pre_stock).forEach(x=>activity.push({type:"Purchase",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Purchase · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_cost||0),date:x.purchased_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
  viewReturns().forEach(x=>activity.push({type:"Return",title:activityProductName(x),subtitle:(String(x.return_type||"return").replace(/_/g," ")+" · "+String(x.payment_mode||"cash")).toUpperCase(),amount:Number(x.total_amount||0),date:x.returned_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
