@@ -756,72 +756,69 @@ td strong,td b{color:#f7f9ff}
   box-shadow:0 0 12px rgba(139,92,246,.7);
 }
 
-/* ---------- Swipe helpers already used by the app ---------- */
-
-.swipe-hint{position:relative}
-.swipe-arrow{
-  position:absolute;
-  top:50%;
-  transform:translateY(-50%);
-  z-index:65;
-  width:34px;
-  height:42px;
-  min-height:0;
-  padding:0;
-  border:1px solid #34435f;
+/* ---------- Shared horizontal swipe / scrollbar styling ---------- */
+.swipe-scroll{
+  scrollbar-width:thin;
+  scrollbar-color:#66738a #111a2a;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-x pan-y;
+}
+.swipe-scroll::-webkit-scrollbar{
+  height:9px;
+}
+.swipe-scroll::-webkit-scrollbar-track{
+  background:#111a2a;
   border-radius:999px;
-  background:rgba(16,24,42,.96);
-  color:#dce3f1;
-  box-shadow:0 6px 20px rgba(0,0,0,.25);
-  font-size:23px;
-  line-height:36px;
 }
-.swipe-arrow:hover{
-  background:#1a2740;
-  border-color:#526487;
+.swipe-scroll::-webkit-scrollbar-thumb{
+  background:#66738a;
+  border:2px solid #111a2a;
+  border-radius:999px;
 }
-.swipe-arrow.left{left:5px}
-.swipe-arrow.right{right:5px}
-.bottom-nav.swipe-hint .swipe-arrow{
-  top:50%;
-  height:34px;
-  width:30px;
-  font-size:19px;
-  line-height:28px;
+.swipe-scroll::-webkit-scrollbar-thumb:hover{
+  background:#8290a8;
 }
-.bottom-nav.swipe-hint{position:fixed}
-.bottom-nav.swipe-hint .swipe-arrow.left{left:4px}
-.bottom-nav.swipe-hint .swipe-arrow.right{right:4px}
-
-.swipe-host{position:relative}
-.swipe-host>.swipe-arrow{
-  position:absolute;
-  top:4px;
-  transform:none;
-  z-index:70;
-  width:32px;
-  height:32px;
-  min-height:0;
-  padding:0;
-  border:1px solid #34435f;
-  border-radius:9px;
-  background:#111a2d;
-  box-shadow:0 4px 15px rgba(0,0,0,.22);
-  font-size:20px;
-  line-height:28px;
+.table-wrap,
+.reports-scroll,
+.seg{
+  overflow-x:auto;
+  scrollbar-width:thin;
+  scrollbar-color:#66738a #111a2a;
+  -webkit-overflow-scrolling:touch;
 }
-.swipe-host>.swipe-arrow.left{left:4px}
-.swipe-host>.swipe-arrow.right{right:4px}
-.bottom-nav.swipe-host>.swipe-arrow{
-  position:fixed;
-  top:auto;
-  bottom:calc(48px + env(safe-area-inset-bottom,0px));
-  transform:none;
-  z-index:100;
+.table-wrap::-webkit-scrollbar,
+.reports-scroll::-webkit-scrollbar,
+.seg::-webkit-scrollbar{
+  height:9px;
 }
-.bottom-nav.swipe-host>.swipe-arrow.left{left:4px}
-.bottom-nav.swipe-host>.swipe-arrow.right{right:4px}
-
+.table-wrap::-webkit-scrollbar-track,
+.reports-scroll::-webkit-scrollbar-track,
+.seg::-webkit-scrollbar-track{
+  background:#111a2a;
+  border-radius:999px;
+}
+.table-wrap::-webkit-scrollbar-thumb,
+.reports-scroll::-webkit-scrollbar-thumb,
+.seg::-webkit-scrollbar-thumb{
+  background:#66738a;
+  border:2px solid #111a2a;
+  border-radius:999px;
+}
+.bottom-nav{
+  scrollbar-width:thin;
+  scrollbar-color:#66738a transparent;
+}
+.bottom-nav::-webkit-scrollbar{
+  height:5px;
+}
+.bottom-nav::-webkit-scrollbar-track{
+  background:transparent;
+}
+.bottom-nav::-webkit-scrollbar-thumb{
+  background:#66738a;
+  border-radius:999px;
+}
 /* ---------- Dynamic panels used by cart / creditor / debtor / returns ---------- */
 
 .credit-history,.debtor-history{
