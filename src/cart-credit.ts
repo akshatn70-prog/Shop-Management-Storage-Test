@@ -69,7 +69,7 @@ export function createCartCreditFeature(ctx: FeatureContext) {
       <form id="cartAddForm" class="form-grid">
         <label>Search product<input id="cartProductSearch" type="search" placeholder="Search by product name..."></label>
         <label>Product<select id="cartProductSelect" name="product_id" required>${products.map(p=>`<option value="${p.id}">${ctx.escapeHtml(p.name)} — ${ctx.escapeHtml(String(p.current_stock_base))} available</option>`).join("")}</select></label>
-        <label>Quantity<input name="quantity" type="number" min="0" step="0.001" required></label>
+        <label>Quantity<input name="quantity" type="number" min="0" step="any" required></label>
         <label>Sold in<select name="sold_unit"></select></label>
         <label>Selling price<input name="price" type="number" min="0" step="any" required></label>
         <div class="full"><button class="primary" type="submit">Add</button><button id="cartDoneBtn" type="button" class="ghost">Done</button></div>
