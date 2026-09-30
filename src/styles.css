@@ -1545,3 +1545,86 @@ th{font-size:7px}
   min-width:29px;
   font-size:10px;
 }
+
+/* ---------- Stock search + top action forms ---------- */
+.stock-search-row{
+  margin-bottom:9px;
+}
+.stock-search-row input{
+  min-width:0;
+}
+.stock-list-panel{
+  margin-top:9px;
+}
+.stock-page #stockForm{
+  scroll-margin-top:10px;
+}
+.stock-page #stockForm:empty{
+  display:none;
+}
+.stock-page #stockForm > .panel{
+  margin-top:0;
+  margin-bottom:9px;
+  border-color:#344768;
+  box-shadow:0 8px 24px rgba(0,0,0,.18);
+}
+.stock-product-row.is-hidden{
+  display:none!important;
+}
+
+/* ---------- Unified recent activity ---------- */
+.recent-activity-list{
+  display:grid;
+  gap:1px;
+}
+.recent-activity-row{
+  min-height:49px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 3px;
+  border-bottom:1px solid #1d2940;
+}
+.recent-activity-row:last-child{
+  border-bottom:0;
+}
+.recent-activity-icon{
+  width:29px;
+  height:29px;
+  flex:0 0 29px;
+  display:grid;
+  place-items:center;
+  border-radius:9px;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  background:#159d78;
+}
+.recent-activity-sale{background:#208fcf}
+.recent-activity-purchase{background:#159d78}
+.recent-activity-return{background:#e08b24}
+.recent-activity-credit-payment{background:#6c59df}
+.recent-activity-debtor-payment{background:#b04fd0}
+.recent-activity-main{
+  min-width:0;
+  flex:1;
+}
+.recent-activity-main b,
+.recent-activity-total b{
+  display:block;
+  font-size:10px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.recent-activity-main small,
+.recent-activity-total small{
+  display:block;
+  color:#75839b;
+  font-size:8px;
+  margin-top:2px;
+}
+.recent-activity-total{
+  text-align:right;
+  flex:0 0 auto;
+}
