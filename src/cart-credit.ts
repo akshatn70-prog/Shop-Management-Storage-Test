@@ -208,7 +208,38 @@ export function createCartCreditFeature(ctx: FeatureContext) {
     }));
   }
 
+  function bindCartSteppers() {
+    const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="quantity"],input[type="number"][name="price"]'));
+    inputs.forEach(input=>{
+      if(input.closest(".qty-stepper"))return;
+      const wrap=document.createElement("div");
+      wrap.className="qty-stepper";
+      input.parentElement?.insertBefore(wrap,input);
+      wrap.appendChild(input);
+      const make=(direction:-1|1)=>{
+        const b=document.createElement("button");
+        b.type="button";
+        b.className=direction<0?"qty-stepper-btn qty-minus":"qty-stepper-btn qty-plus";
+        b.setAttribute("aria-label",direction<0?"Decrease value":"Increase value");
+        b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
+        b.addEventListener("click",()=>{
+          if(input.readOnly||input.disabled)return;
+          let value=Number(input.value);
+          if(!Number.isFinite(value))value=0;
+          value=Math.max(0,value+direction);
+          input.value=String(Math.round(value));
+          input.dispatchEvent(new Event("input",{bubbles:true}));
+          input.dispatchEvent(new Event("change",{bubbles:true}));
+        });
+        return b;
+      };
+      wrap.insertBefore(make(-1),input);
+      wrap.appendChild(make(1));
+    });
+  }
+
   function bindCart() {
+    bindCartSteppers();
     const supabase=ctx.getSupabase(),profile=ctx.getProfile(),settings=ctx.getSettings();
     const form=document.querySelector<HTMLFormElement>("#cartAddForm");
     if(form&&supabase&&profile) {
