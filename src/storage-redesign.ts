@@ -30,6 +30,20 @@ const viewDebtorLedger=()=>historicalView?.debtorLedger??debtorLedger;
 const viewReturns=()=>historicalView?.returns??returnsRows;
 const viewAudit=()=>historicalView?.audit??auditRows;
 let bottomNavScrollLeft=0, reportTableScrollLeft=0, dashboardSummaryKind="";
+const horizontalScrollPositions=new Map<string,number>();
+const horizontalScrollKey=(el:HTMLElement,index:number)=>activeTab+"|"+el.className+"|"+index;
+const captureHorizontalScroll=()=>{
+ document.querySelectorAll<HTMLElement>(".table-wrap,.seg,.reports-scroll").forEach((el,index)=>{
+  horizontalScrollPositions.set(horizontalScrollKey(el,index),el.scrollLeft);
+ });
+};
+const restoreHorizontalScroll=()=>{
+ document.querySelectorAll<HTMLElement>(".table-wrap,.seg,.reports-scroll").forEach((el,index)=>{
+  const saved=horizontalScrollPositions.get(horizontalScrollKey(el,index));
+  if(saved!==undefined)el.scrollLeft=saved;
+  el.addEventListener("scroll",()=>horizontalScrollPositions.set(horizontalScrollKey(el,index),el.scrollLeft),{passive:true});
+ });
+};
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[], lowStockOnly=false;
@@ -1369,6 +1383,7 @@ function addSwipeHints(){
 
 function render(){
  if(!profile){login();return}
+ captureHorizontalScroll();
  const oldNav=document.querySelector<HTMLElement>(".bottom-nav");if(oldNav)bottomNavScrollLeft=oldNav.scrollLeft;
  if(activeTab==="reports"){const oldReport=document.querySelector<HTMLElement>(".reports-scroll");if(oldReport)reportTableScrollLeft=oldReport.scrollLeft;}
  app.innerHTML=shell(activeTab);
@@ -1378,6 +1393,7 @@ function render(){
  fitDashboardMetricValues();
  const newNav=document.querySelector<HTMLElement>(".bottom-nav");if(newNav){newNav.scrollLeft=bottomNavScrollLeft;newNav.addEventListener("scroll",()=>{bottomNavScrollLeft=newNav.scrollLeft},{passive:true})}
  addSwipeHints();
+ restoreHorizontalScroll();
  if(activeTab==="reports"){const newReport=document.querySelector<HTMLElement>(".reports-scroll");if(newReport){newReport.scrollLeft=reportTableScrollLeft;newReport.addEventListener("scroll",()=>{reportTableScrollLeft=newReport.scrollLeft},{passive:true})}}
 }
 
