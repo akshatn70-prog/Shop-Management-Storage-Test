@@ -46,7 +46,7 @@ Mistakes are corrected by **voiding** a sale with a reason and restoring its sto
 
 ### Custom Entry
 
-Owners can open **More → Custom Entry**, choose today or an earlier business date, and use the app's usual sale, cart, purchase, return, and payment screens. These entries pass through the same database transaction functions and stock, balance, and payment checks as ordinary entries. Inventory changes immediately when the entry is saved; the transaction and daily reports use the selected business date. Custom entries are excluded from automatic detail-retention cleanup.
+Owners can open **More → Custom Entry**, choose today or an earlier business date, and use the app's usual sale, cart, purchase, return, and account-payment screens. Entries use the same protected transaction functions and validate quantities, payment splits, stock, and selected-date account balances. They are saved on the selected business date, while stock changes immediately against current inventory. A historical purchase does not overwrite the current product prices. For same-day costing, enter a restock before the sales that should use its cost. If there is no earlier cost record for a product, its current product cost is the fallback. Reports show that day's totals and cumulative totals through the selected day; creditor/debtor balances are calculated as of that day. Product/account setup, settings, deleting data, and correcting or voiding an existing transaction remain live actions and require exiting Custom Entry. Custom transaction details are excluded from automatic detail-retention cleanup.
 
 ## Reconciliation and closing
 

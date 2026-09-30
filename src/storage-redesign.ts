@@ -20,7 +20,7 @@ let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:A
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
 let customEntryMode=false, customEntryDate="";
 let reportLookup:AnyRow|null=null, reportLookupDate="", reportLookupLoading=false;
-let historicalView:{business_date:string;sales:AnyRow[];purchases:AnyRow[];ledger:AnyRow[];debtorLedger:AnyRow[];returns:AnyRow[];audit:AnyRow[];summary:AnyRow|null;creditBalances:Record<string,number>;debtorBalances:Record<string,number>}|null=null;
+let historicalView:{business_date:string;sales:AnyRow[];purchases:AnyRow[];ledger:AnyRow[];debtorLedger:AnyRow[];returns:AnyRow[];audit:AnyRow[];summary:AnyRow|null;lifetime:AnyRow|null;creditBalances:Record<string,number>;debtorBalances:Record<string,number>}|null=null;
 const viewingBusinessDate=()=>customEntryMode&&customEntryDate?customEntryDate:businessDate();
 const viewingLabel=()=>customEntryMode&&customEntryDate?new Date(customEntryDate+"T12:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):localDate();
 const viewSales=()=>historicalView?.sales??sales;
@@ -223,8 +223,8 @@ function buildDemo(){
 
 let demoData:ReturnType<typeof buildDemo>|null=null;
 function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=d.products;sales=d.sales;purchases=d.purchases;creditors=d.creditors;ledger=d.ledger;debtors=d.debtors;debtorLedger=d.debtorLedger;daily=d.daily;auditRows=d.audit;returnsRows=[];workersRows=d.workers;lifetime=d.lifetime;settings={shop_name:"Demo Grocery Store",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:true,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00",theme:"current"};profile=d.owner;demo=true;demoReady=true}
-function qBalance(id:string){if(customEntryMode&&historicalView?.creditBalances&&Object.prototype.hasOwnProperty.call(historicalView.creditBalances,id))return Number(historicalView.creditBalances[id]||0);return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
-function dBalance(id:string){if(customEntryMode&&historicalView?.debtorBalances&&Object.prototype.hasOwnProperty.call(historicalView.debtorBalances,id))return Number(historicalView.debtorBalances[id]||0);return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
+function qBalance(id:string){if(customEntryMode&&historicalView)return Number(historicalView.creditBalances[id]||0);return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
+function dBalance(id:string){if(customEntryMode&&historicalView)return Number(historicalView.debtorBalances[id]||0);return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
 function currentSales(){const day=viewingBusinessDate();return viewSales().filter(s=>!s.voided&&transactionBusinessDate(s,s.sold_at)===day)}
 function currentStats(){const day=viewingBusinessDate(),a=currentSales(),r=viewReturns().filter(x=>x.return_type==="sale"&&transactionBusinessDate(x,x.returned_at)===day);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);const cash=a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc;const upi=a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru;const credit=a.reduce((x,y)=>x+saleCreditAmount(y),0)-rcr;const sales=a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr;return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash,upi,credit}}
 
@@ -268,10 +268,14 @@ async function loadReportDate(date:string){
 async function loadHistoricalView(date:string){
  if(!customEntryMode||!date||!supabase||demo){historicalView=null;return true}
  try{
-  const r=await supabase.rpc("get_business_day_view",{p_business_date:date});
+  const [r,supplement]=await Promise.all([
+   supabase.rpc("get_business_day_view",{p_business_date:date}),
+   supabase.rpc("get_business_day_supplement",{p_business_date:date})
+  ]);
   if(r.error)throw r.error;
-  const data:any=r.data||{};
-  historicalView={business_date:date,sales:Array.isArray(data.sales)?data.sales:[],purchases:Array.isArray(data.purchases)?data.purchases:[],ledger:Array.isArray(data.credit_ledger)?data.credit_ledger:[],debtorLedger:Array.isArray(data.debtor_ledger)?data.debtor_ledger:[],returns:Array.isArray(data.returns)?data.returns:[],audit:Array.isArray(data.audit)?data.audit:[],summary:data.summary&&Object.keys(data.summary).length?data.summary:null,creditBalances:data.credit_balances&&typeof data.credit_balances==="object"?data.credit_balances:{},debtorBalances:data.debtor_balances&&typeof data.debtor_balances==="object"?data.debtor_balances:{}};
+  if(supplement.error)throw supplement.error;
+  const data:any={...(r.data||{}),...(supplement.data||{})};
+  historicalView={business_date:date,sales:Array.isArray(data.sales)?data.sales:[],purchases:Array.isArray(data.purchases)?data.purchases:[],ledger:Array.isArray(data.credit_ledger)?data.credit_ledger:[],debtorLedger:Array.isArray(data.debtor_ledger)?data.debtor_ledger:[],returns:Array.isArray(data.returns)?data.returns:[],audit:Array.isArray(data.audit)?data.audit:[],summary:data.summary&&Object.keys(data.summary).length?data.summary:null,lifetime:data.historical_lifetime&&Object.keys(data.historical_lifetime).length?data.historical_lifetime:null,creditBalances:data.credit_balances&&typeof data.credit_balances==="object"?data.credit_balances:{},debtorBalances:data.debtor_balances&&typeof data.debtor_balances==="object"?data.debtor_balances:{}};
   reportLookup=historicalView.summary;reportLookupDate=date;
   return true;
  }catch(err){historicalView=null;notify("Could not load the selected business day: "+errorMessage(err),"error");return false}
@@ -326,7 +330,7 @@ function shell(title:string){
    const item=nav.find(x=>x[0]===id)!;
    return '<button data-nav="'+item[0]+'" class="'+(activeTab===item[0]?"active":"")+'">'+icon(item[2])+'<span>'+esc(item[1])+'</span></button>';
  }).join("");
- return '<div class="app-shell"><header><div class="header-left">'+(activeTab!=="dashboard"?'<button id="uiBack" type="button" class="header-back" aria-label="Back">‹</button>':"")+'<div class="header-brand"><span class="brand-mark">'+icon("store")+'</span><div><b>'+esc(settings.shop_name)+'</b><span class="muted">'+esc(customEntryMode?"CUSTOM ENTRY · "+viewingLabel():title==="dashboard"?"Owner Dashboard":title==="sale"?"Sale":title==="more"?"More":title.replace(/(^|_)/g," "))+'</span></div></div></div><button id="logout" class="header-icon-btn" type="button" aria-label="Sign out" title="Sign out">'+icon("log-out")+'</button></header>'+(owner&&customEntryMode?'<div class="custom-entry-bar"><div><b>CUSTOM ENTRY — '+esc(viewingLabel())+'</b><small>The whole app is viewing this business date. Transactions still change current stock immediately.</small></div><label>Business date<input id="customEntryDate" type="date" max="'+esc(businessDate())+'" value="'+esc(customEntryDate||businessDate())+'" required></label><button id="exitCustomEntry" class="ghost" type="button">Exit Custom Entry</button></div>':"")+'<main><div id="view"></div></main><nav class="bottom-nav">'+visibleButtons+'</nav></div>';
+ return '<div class="app-shell"><header><div class="header-left">'+(activeTab!=="dashboard"?'<button id="uiBack" type="button" class="header-back" aria-label="Back">‹</button>':"")+'<div class="header-brand"><span class="brand-mark">'+icon("store")+'</span><div><b>'+esc(settings.shop_name)+'</b><span class="muted">'+esc(customEntryMode?"CUSTOM ENTRY · "+viewingLabel():title==="dashboard"?"Owner Dashboard":title==="sale"?"Sale":title==="more"?"More":title.replace(/(^|_)/g," "))+'</span></div></div></div><button id="logout" class="header-icon-btn" type="button" aria-label="Sign out" title="Sign out">'+icon("log-out")+'</button></header>'+(owner&&customEntryMode?'<div class="custom-entry-bar"><div><b>CUSTOM ENTRY — '+esc(viewingLabel())+'</b><small>Transactions and reports use this date. Stock changes immediately; product, account, settings, and shop data remain live.</small></div><label>Business date<input id="customEntryDate" type="date" max="'+esc(businessDate())+'" value="'+esc(customEntryDate||businessDate())+'" required></label><button id="exitCustomEntry" class="ghost" type="button">Exit Custom Entry</button></div>':"")+'<main><div id="view"></div></main><nav class="bottom-nav">'+visibleButtons+'</nav></div>';
 }
 
 const normalizeSearchText=(value:any)=>String(value??"").toLowerCase().replace(/[^a-z0-9]+/g,"");
@@ -376,26 +380,29 @@ function openHomeSearchItem(item:{tab:string;action?:string}){
 
 function dashboardSummaryRows(kind:string){
  const today=currentSales();
- if(kind==="total-sales")return today.map(x=>({name:transactionProductName(x),amount:money(x.total_sale)}));
- if(kind==="total-profit")return today.map(x=>({name:transactionProductName(x),amount:money(x.gross_profit)}));
+ const saleReturns=viewReturns().filter(x=>x.return_type==="sale"&&transactionBusinessDate(x,x.returned_at)===viewingBusinessDate());
+ if(kind==="total-sales")return [...today.map(x=>({name:transactionProductName(x),amount:money(x.total_sale)})),...saleReturns.map(x=>({name:"Return · "+transactionProductName(x),amount:"−"+money(x.total_amount)}))];
+ if(kind==="total-profit")return [...today.map(x=>({name:transactionProductName(x),amount:money(x.gross_profit)})),...saleReturns.map(x=>({name:"Return · "+transactionProductName(x),amount:money(x.profit_impact)}))];
  if(kind==="cash"){
-  return today.filter(x=>Number(x.cash_amount||0)>0).map(x=>{
+  const rows=today.filter(x=>Number(x.cash_amount||0)>0).map(x=>{
    const total=Math.max(0,Number(x.total_sale||0)),cash=Number(x.cash_amount||0),profit=Number(x.gross_profit||0)*(total?cash/total:0);
    return {name:transactionProductName(x),amount:money(cash),profit:money(profit)};
   });
+  return [...rows,...saleReturns.filter(x=>Number(x.cash_amount||0)>0).map(x=>({name:"Return · "+transactionProductName(x),amount:"−"+money(x.cash_amount),profit:money(x.profit_impact)}))];
  }
  if(kind==="upi"){
-  return today.filter(x=>Number(x.upi_amount||0)>0).map(x=>{
+  const rows=today.filter(x=>Number(x.upi_amount||0)>0).map(x=>{
    const total=Math.max(0,Number(x.total_sale||0)),upi=Number(x.upi_amount||0),profit=Number(x.gross_profit||0)*(total?upi/total:0);
    return {name:transactionProductName(x),amount:money(upi),profit:money(profit)};
   });
+  return [...rows,...saleReturns.filter(x=>Number(x.upi_amount||0)>0).map(x=>({name:"Return · "+transactionProductName(x),amount:"−"+money(x.upi_amount),profit:money(x.profit_impact)}))];
  }
  if(kind==="low-stock"){
   return products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base))
    .map(p=>({name:p.name,amount:String(p.current_stock_base)+" "+(p.unit_type==="piece"?"pcs":"g")+" / limit "+String(p.low_stock_threshold_base)+(p.unit_type==="piece"?" pcs":" g")}));
  }
  if(kind==="pending-dues"){
-  return creditors.map(c=>({name:String(c.name),amount:money(ledger.filter(x=>x.creditor_id===c.id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount||0):x.type==="payment_received"?-Number(x.amount||0):0),0))}))
+  return creditors.map(c=>({name:String(c.name),amount:money(qBalance(c.id))}))
    .filter(x=>Number(x.amount.replace(/[^0-9.-]/g,""))>0);
  }
  return [];
@@ -456,7 +463,7 @@ function moreView(){
 function customEntryView(){
  const items:[string,string,string,string][]=[["sale","Single Sale","shopping-cart","Record one missed sale"],["cart","Cart Sale","shopping-cart","Record a multi-item sale"],["stock","Purchase / Stock","package","Record a supplier purchase"],["returns","Returns","rotate-ccw","Record a sale or purchase return"],["creditors","Creditor Payments","wallet","Record customer credit received"],["debtors","Debtor Payments","wallet-cards","Record supplier payment"],["history","History","history","Review records for the selected date"]];
  const icon=(name:string)=>'<span class="ui-icon ui-icon-'+name+'" aria-hidden="true"></span>';
- return '<section class="page custom-entry-page"><div class="page-head"><div><h2>Custom Entry</h2><p class="muted">Select a transaction. The existing checks for stock, balances, permissions, and totals still apply.</p></div></div><div class="panel notice warning"><b>Historical entry</b><br>Stock changes now; reports and transaction history use the business date selected above. Make sure this is the transaction that was missed.</div><div class="panel more-page-menu"><div class="more-menu">'+items.map(x=>'<button type="button" data-nav="'+x[0]+'" class="more-menu-item">'+icon(x[2])+'<span><b>'+esc(x[1])+'</b><small>'+esc(x[3])+'</small></span><span class="chevron">›</span></button>').join("")+'</div></div></section>';
+ return '<section class="page custom-entry-page"><div class="page-head"><div><h2>Custom Entry</h2><p class="muted">Select a transaction. Existing validation for quantities, payment splits, stock, balances, and permissions still applies.</p></div></div><div class="panel notice warning"><b>Historical entry</b><br>Each transaction is recorded on '+esc(viewingLabel())+'. Stock is adjusted immediately using current inventory. Historical purchases do not replace today’s product prices; if entering a restock and sales for the same past date, save the restock first so its cost is used for later entries. If no earlier cost record exists, the current product cost is used. Use existing accounts; account setup, product changes, settings, and corrections to saved transactions require exiting Custom Entry.</div><div class="panel more-page-menu"><div class="more-menu">'+items.map(x=>'<button type="button" data-nav="'+x[0]+'" class="more-menu-item">'+icon(x[2])+'<span><b>'+esc(x[1])+'</b><small>'+esc(x[3])+'</small></span><span class="chevron">›</span></button>').join("")+'</div></div></section>';
 }
 const transactionProductName=(row:any)=>{
  const snapshot=String(row?.product_name_snapshot||"").trim();
@@ -468,7 +475,7 @@ const transactionProductName=(row:any)=>{
 };
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
- const pending=creditors.reduce((a,c)=>a+viewLedger().filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
+ const pending=creditors.reduce((a,c)=>a+Math.max(0,qBalance(c.id)),0);
  const activity:{type:string;title:string;subtitle:string;amount:number;date:any;mode?:string;product_id?:string}[]=[];
  const activityProductName=(row:any)=>transactionProductName(row);
  viewSales().filter(x=>!x.voided).forEach(x=>activity.push({type:"Sale",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Sale · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_sale||0),date:x.sold_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
@@ -514,6 +521,7 @@ function stock(){
  return '<section class="page stock-page"><div class="page-head"><div><h2>'+title+'</h2><p class="muted">'+subtitle+'</p></div><div class="action-row">'+(lowStockOnly?'<button id="showAllStock" class="ghost">Show All Stock</button>':"")+(owner?'<button id="addProduct" class="ghost">＋ Add Product</button>':"")+'<button id="addPurchase" class="primary">＋ Purchase</button></div></div><div id="stockForm"></div><div class="panel stock-list-panel"><div class="search-row stock-search-row"><input id="stockSearch" type="search" autocomplete="off" placeholder="Search product name or number..."><button id="stockSearchBtn" type="button" class="ghost">Search</button></div><div class="stock-search-status" id="stockSearchStatus"></div><div class="table-wrap"><table><thead><tr><th>Product</th><th>Current</th><th>Buy</th><th>Sell</th>'+(owner?'<th>Actions</th>':"")+'</tr></thead><tbody>'+products.filter(p=>!lowStockOnly||Number(p.current_stock_base)<=Number(p.low_stock_threshold_base)).map(p=>'<tr class="stock-product-row" data-search="'+esc([p.name,p.id,(p as any).sku,(p as any).barcode,(p as any).product_code].filter(Boolean).join(" ").toLowerCase())+'"><td><div class="stock-product-cell">'+productPhotoMarkup(p,true)+'<span>'+esc(p.name)+'</span></div></td><td>'+p.current_stock_base+' '+(p.unit_type==="piece"?"pcs":"g")+'</td><td>'+money(p.purchase_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td><td>'+money(p.selling_price_per_base_unit)+(p.unit_type==="weight"?((p.weight_price_unit||"kg")==="kg"?"/kg":"/g"):"")+'</td>'+(owner?'<td><button class="smallbtn edit-product" data-id="'+p.id+'">Edit</button> <button class="smallbtn danger delete-product" data-id="'+p.id+'">Delete</button></td>':"")+'</tr>').join("")+'</tbody></table></div></div></section>';
 }
 function productEditForm(productId:string){
+ if(customEntryMode)return notify("Exit Custom Entry to edit product details. Product setup is live, not historical.","info");
  const p=products.find(x=>x.id===productId);if(!p)return notify("Product not found.","error");
  const h=document.querySelector("#stockForm")!,priceUnit=p.unit_type==="weight"?(p.weight_price_unit||"kg"):"piece";
  h.innerHTML='<div class="panel"><h3>Edit Product</h3><form id="productEditForm" class="form-grid"><label>Name<input name="name" value="'+esc(p.name)+'" required></label><label>Price unit<select name="weightUnit" '+(p.unit_type==="piece"?"disabled":"")+'><option value="kg" '+(priceUnit==="kg"?"selected":"")+'>kg (price per kg)</option><option value="grams" '+(priceUnit==="grams"?"selected":"")+'>grams (price per gram)</option></select></label><label>Purchase price<input name="purchase" type="number" min="0" step="any" value="'+esc(p.purchase_price_per_base_unit)+'" required></label><label>Selling price<input name="sale" type="number" min="0" step="any" value="'+esc(p.selling_price_per_base_unit)+'" required></label><label>Low stock limit<input name="low" type="number" min="0" step="any" value="'+esc(p.low_stock_threshold_base)+'" required></label><div class="product-photo-editor full" id="editProductPhoto"><div class="product-photo-stage">'+productPhotoMarkup(p)+'</div><div class="photo-actions"><label class="smallbtn photo-pick">Change Photo<input id="editProductPhotoInput" type="file" accept="image/*" hidden></label><button id="editProductPhotoRemove" type="button" class="smallbtn danger" '+(p.photo_path?"":"disabled")+'>Remove Photo</button></div><small class="muted">Photo is compressed before upload.</small></div><div class="action-row full"><button class="primary">Save Changes</button><button id="cancelProductEdit" type="button" class="ghost">Cancel</button></div></form></div>';
@@ -538,6 +546,7 @@ function productEditForm(productId:string){
 function bindStockActions(){
  document.querySelectorAll<HTMLButtonElement>(".edit-product").forEach(b=>b.addEventListener("click",()=>productEditForm(String(b.dataset.id||""))));
  document.querySelectorAll<HTMLButtonElement>(".delete-product").forEach(b=>b.addEventListener("click",async()=>{
+  if(customEntryMode)return notify("Exit Custom Entry to delete products. Product setup is live, not historical.","info");
   const id=String(b.dataset.id||""),p=products.find(x=>x.id===id);
   if(!p)return;
   if(!window.confirm("Delete product \"" + p.name + "\"? This removes it from active Stock but preserves history."))return;
@@ -724,6 +733,7 @@ function bindCart(){
 }
 
 function productForm(){
+ if(customEntryMode)return notify("Exit Custom Entry to add products. Product setup is live, not historical.","info");
  const h=document.querySelector("#stockForm")!;
  h.innerHTML='<div class="panel"><h3>Add Product</h3><form id="productForm" class="form-grid"><label>Name<input name="name" required></label><label>Unit<select name="unit"><option value="piece">pieces</option><option value="kg">kg</option><option value="grams">grams</option></select></label><label id="productQtyLabel">Opening quantity<input name="qty" type="number" min="0" step="any" value="0" required></label><label>Low stock limit <span class="muted tiny">(grams for weight products)</span><input name="low" type="number" min="0" step="any" value="0" required></label><label id="productPurchaseLabel">Purchase price<input name="purchase" type="number" min="0" step="any" value="0"></label><label id="productSellingLabel">Selling price<input name="sale" type="number" min="0" step="any" value="0"></label><label>Payment<select name="payment"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="pre_stock">Pre-stock recording</option></select></label><label id="productCashBox" class="hidden">Cash<input name="cash" type="number" min="0" step="any" value="0"></label><label id="productUpiBox" class="hidden">UPI<input name="upi" type="number" min="0" step="any" value="0"></label><label id="productDebtorBox" class="hidden">Supplier credit/debtor<select name="debtor"><option value="">Select debtor</option>'+debtors.map(d=>'<option value="'+d.id+'">'+esc(d.name)+' — '+esc(d.mobile)+'</option>').join("")+'<option value="__new__">＋ New Debtor</option></select></label><div class="product-photo-editor full" id="newProductPhoto"><div class="product-photo-stage product-photo-empty"><span class="ui-icon product-photo-placeholder-icon" aria-hidden="true"></span></div><div class="photo-actions"><label class="smallbtn photo-pick">Add Photo<input id="newProductPhotoInput" type="file" accept="image/*" hidden></label><button id="newProductPhotoRemove" type="button" class="smallbtn danger" disabled>Remove Photo</button></div><small class="muted">Photo is compressed before upload.</small></div><label class="check full"><input type="checkbox" name="prestock"> Pre-stock recording</label><button class="primary full">Add Product</button></form></div>';
  const f=document.querySelector<HTMLFormElement>("#productForm")!,unitEl=f.elements.namedItem("unit") as HTMLSelectElement,qtyEl=f.elements.namedItem("qty") as HTMLInputElement,mode=f.elements.namedItem("payment") as HTMLSelectElement,pre=f.elements.namedItem("prestock") as HTMLInputElement,db=f.elements.namedItem("debtor") as HTMLSelectElement,cashEl=f.elements.namedItem("cash") as HTMLInputElement,upiEl=f.elements.namedItem("upi") as HTMLInputElement;
@@ -784,8 +794,8 @@ function purchaseForm(){
   preview.textContent="Purchase total: "+money(saleTotal(p,base,Number(priceEl.value)||0));
  };
  const sync=()=>{const v=mode.value,credit=v==="credit",split=v==="split";document.querySelector("#purchaseDebtorBox")?.classList.toggle("hidden",!credit);document.querySelector("#purchaseCashBox")?.classList.toggle("hidden",!split);document.querySelector("#purchaseUpiBox")?.classList.toggle("hidden",!split);if(v==="pre_stock"){pre.checked=true;pre.disabled=true;cashEl.value="0";upiEl.value="0"}else pre.disabled=false;if(!split){cashEl.value="0";upiEl.value="0"}};
- purchasePhotoInput.addEventListener("change",async()=>{const file=purchasePhotoInput.files?.[0];if(!file)return;try{await uploadProductPhoto(productEl.value,file);syncProduct(false);notify("Product photo updated.","success")}catch(err){notify(errorMessage(err),"error")}finally{purchasePhotoInput.value=""}});
- purchasePhotoRemove.addEventListener("click",async()=>{const p=products.find(x=>x.id===productEl.value);if(!p?.photo_path)return;if(!window.confirm("Remove this product photo?"))return;try{await removeProductPhoto(p.id);syncProduct(false);notify("Product photo removed.","success")}catch(err){notify(errorMessage(err),"error")}});
+ purchasePhotoInput.addEventListener("change",async()=>{const file=purchasePhotoInput.files?.[0];if(!file)return;if(customEntryMode){purchasePhotoInput.value="";return notify("Exit Custom Entry to change product photos.","info")}try{await uploadProductPhoto(productEl.value,file);syncProduct(false);notify("Product photo updated.","success")}catch(err){notify(errorMessage(err),"error")}finally{purchasePhotoInput.value=""}});
+ purchasePhotoRemove.addEventListener("click",async()=>{if(customEntryMode)return notify("Exit Custom Entry to change product photos.","info");const p=products.find(x=>x.id===productEl.value);if(!p?.photo_path)return;if(!window.confirm("Remove this product photo?"))return;try{await removeProductPhoto(p.id);syncProduct(false);notify("Product photo removed.","success")}catch(err){notify(errorMessage(err),"error")}});
  productEl.addEventListener("change",()=>syncProduct(true));qtyEl.addEventListener("input",()=>syncProduct(false));priceEl.addEventListener("input",()=>syncProduct(false));sellingEl.addEventListener("input",()=>syncProduct(false));syncProduct(true);
  mode.addEventListener("change",()=>{if(mode.value!=="credit")db.value="";sync()});sync();
  db.addEventListener("change",async()=>{if(db.value!=="__new__")return;const n=prompt("Supplier/debtor name"),mbl=prompt("Mobile number");if(!n?.trim()||!mbl?.trim()){db.value="";return}try{await createDebtor(n.trim(),mbl.trim());render();notify("Debtor registered. Select it for the purchase.","success")}catch(err){db.value="";notify(errorMessage(err),"error")}});
@@ -808,10 +818,12 @@ function purchaseForm(){
  });
 }
 async function createCreditor(name:string,mobile:string){
+ if(customEntryMode)throw new Error("Exit Custom Entry to add a creditor. Account setup is live, not historical.");
  if(demo){const c={id:"c"+Date.now(),name,mobile};creditors.push(c);return c}
  const r=await supabase!.rpc("get_or_create_creditor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;await loadData();return r.data;
 }
 async function createDebtor(name:string,mobile:string){
+ if(customEntryMode)throw new Error("Exit Custom Entry to add a debtor. Account setup is live, not historical.");
  if(demo){const d={id:"d"+Date.now(),name,mobile};debtors.push(d);return d}
  const r=await supabase!.rpc("get_or_create_debtor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;await loadData();return r.data;
 }
@@ -898,6 +910,7 @@ function groupSaleRows(rows:AnyRow[]):SaleVoidGroup[]{
  return [...grouped.values()];
 }
 async function voidSaleGroup(group:SaleVoidGroup,button:HTMLButtonElement){
+ if(customEntryMode)return notify("Exit Custom Entry to correct or void an existing transaction.","info");
  if(voidingSaleKeys.has(group.key))return;
  const reason=window.prompt(group.transactionId?"Enter the correction reason for this cart transaction:":"Enter the correction reason for this sale:");
  if(reason===null)return;
@@ -908,7 +921,7 @@ async function voidSaleGroup(group:SaleVoidGroup,button:HTMLButtonElement){
  const label=group.transactionId?"Void Cart":"Void Sale";
  button.disabled=true;button.textContent="Voiding…";
  try{
-  const targetRows=group.transactionId?sales.filter(x=>String(x.transaction_id||"")===group.transactionId&&!x.voided):group.rows.slice(0,1);
+  const targetRows=group.transactionId?viewSales().filter(x=>String(x.transaction_id||"")===group.transactionId&&!x.voided):group.rows.slice(0,1);
   if(!targetRows.length)throw new Error("Sale transaction is no longer available.");
   if(demo){
    const now=new Date().toISOString();
@@ -935,15 +948,15 @@ async function voidSaleGroup(group:SaleVoidGroup,button:HTMLButtonElement){
 function history(){
  const today=localDate(),todayBusinessDate=businessDate();
  const matches=(row:AnyRow,d:any)=>historyRange==="today"?transactionBusinessDate(row,d)===(row?.custom_entry?todayBusinessDate:today):historyRange==="date"?(!!historyDate&&transactionBusinessDate(row,d)===historyDate):historyRange==="7"?new Date(d).getTime()>=Date.now()-7*864e5:historyRange==="30"?new Date(d).getTime()>=Date.now()-30*864e5:true;
- const rows=historyType==="sales"?sales.filter(x=>!x.voided&&matches(x,x.sold_at)):purchases.filter(x=>!x.pre_stock&&matches(x,x.purchased_at));
+  const rows=historyType==="sales"?viewSales().filter(x=>!x.voided&&matches(x,x.sold_at)):viewPurchases().filter(x=>!x.pre_stock&&matches(x,x.purchased_at));
  const dates=[...new Set(rows.map(x=>transactionBusinessDate(x,historyType==="sales"?x.sold_at:x.purchased_at)))].sort().reverse();
  const owner=profile?.role==="owner",groups=historyType==="sales"?groupSaleRows(rows):[];
- const voidButton=(group:SaleVoidGroup)=>'<button type="button" class="smallbtn danger void-sale" data-void-key="'+esc(group.key)+'" '+(group.transactionId?'data-transaction-id="'+esc(group.transactionId)+'"':'data-sale-id="'+esc(group.rows[0].id)+'"')+' title="'+(group.transactionId?"Void the complete cart transaction":"Void this sale")+'">'+(group.transactionId?"Void Cart":"Void Sale")+'</button>';
+ const voidButton=(group:SaleVoidGroup)=>customEntryMode?'<span class="tiny muted">Read-only</span>':'<button type="button" class="smallbtn danger void-sale" data-void-key="'+esc(group.key)+'" '+(group.transactionId?'data-transaction-id="'+esc(group.transactionId)+'"':'data-sale-id="'+esc(group.rows[0].id)+'"')+' title="'+(group.transactionId?"Void the complete cart transaction":"Void this sale")+'">'+(group.transactionId?"Void Cart":"Void Sale")+'</button>';
  const saleRows=groups.map(group=>group.rows.map((x,index)=>'<tr><td>'+fmt(x.sold_at)+'</td><td>'+esc((x.product_name_snapshot&&x.product_name_snapshot!=="Deleted product")?x.product_name_snapshot:(x.products?.name||"Product unavailable"))+'</td><td>'+esc(x.quantity_display)+'</td><td>'+(group.transactionId?'<span class="tiny">Cart · </span>':"")+'Cash '+money(x.cash_amount)+' · UPI '+money(x.upi_amount)+' · Credit '+money(saleCreditAmount(x))+'</td><td>'+money(x.total_sale)+'</td><td>'+money(x.gross_profit)+'</td>'+(owner&&index===0?'<td rowspan="'+group.rows.length+'">'+voidButton(group)+'</td>':"")+'</tr>').join("")).join("");
  const purchaseRows=rows.map(x=>'<tr><td>'+fmt(x.purchased_at)+'</td><td>'+esc(x.product_name_snapshot||"")+'</td><td>'+esc(x.quantity_display)+'</td><td>'+esc(x.payment_mode)+'</td><td>'+money(x.total_cost)+'</td><td>'+esc(x.supplier_name||"")+'</td></tr>').join("");
  const header=historyType==="sales"?'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Profit</th>'+(owner?'<th>Actions</th>':""):'<th>Date</th><th>Product</th><th>Qty</th><th>Payment</th><th>Total</th><th>Supplier</th>';
  const body=historyType==="sales"?saleRows:purchaseRows,colspan=historyType==="sales"&&owner?7:6;
- return '<section class="page history-page"><div class="page-head"><div><h2>'+ (historyType==="sales"?"Sales History":"Purchase History") +'</h2><p class="muted">Today is shown by default. Search another date when needed.</p></div></div><div class="seg"><button data-history="sales" class="'+(historyType==="sales"?"active":"")+'">Sales</button><button data-history="purchases" class="'+(historyType==="purchases"?"active":"")+'">Purchases</button><button data-range="today" class="'+(historyRange==="today"?"active":"")+'">Today</button><button data-range="7" class="'+(historyRange==="7"?"active":"")+'">Last 7 Days</button><button data-range="30" class="'+(historyRange==="30"?"active":"")+'">Last 1 Month</button><button data-range="date" class="'+(historyRange==="date"?"active":"")+'">Search Date</button></div><label class="date-inline">Date<input id="historyDate" type="date" value="'+esc(historyDate)+'"></label><div class="panel"><div class="table-wrap"><table><thead><tr>'+header+'</tr></thead><tbody>'+body+(rows.length?"":'<tr><td colspan="'+colspan+'" class="muted">No records for this period.</td></tr>')+'</tbody></table></div><div class="muted tiny">Available dates: '+(dates.length?dates.join(", "):"none")+'</div></div></section>';
+ return '<section class="page history-page"><div class="page-head"><div><h2>'+ (historyType==="sales"?"Sales History":"Purchase History") +'</h2><p class="muted">'+(customEntryMode?"Records for the selected Custom Entry business date.":"Today is shown by default. Search another date when needed.")+'</p></div></div><div class="seg"><button data-history="sales" class="'+(historyType==="sales"?"active":"")+'">Sales</button><button data-history="purchases" class="'+(historyType==="purchases"?"active":"")+'">Purchases</button>'+(customEntryMode?'':'<button data-range="today" class="'+(historyRange==="today"?"active":"")+'">Today</button><button data-range="7" class="'+(historyRange==="7"?"active":"")+'">Last 7 Days</button><button data-range="30" class="'+(historyRange==="30"?"active":"")+'">Last 1 Month</button><button data-range="date" class="'+(historyRange==="date"?"active":"")+'">Search Date</button>')+'</div>'+(customEntryMode?'<p class="muted">Viewing '+esc(viewingLabel())+' · change the date in the Custom Entry bar.</p>':'<label class="date-inline">Date<input id="historyDate" type="date" value="'+esc(historyDate)+'"></label>')+'<div class="panel"><div class="table-wrap"><table><thead><tr>'+header+'</tr></thead><tbody>'+body+(rows.length?"":'<tr><td colspan="'+colspan+'" class="muted">No records for this period.</td></tr>')+'</tbody></table></div><div class="muted tiny">Available dates: '+(dates.length?dates.join(", "):"none")+'</div></div></section>';
 }
 function bindHistory(){
   document.querySelectorAll<HTMLElement>("[data-history]").forEach(x=>x.addEventListener("click",()=>{historyType=x.dataset.history!;historyDate="";render()}));
@@ -952,7 +965,8 @@ function bindHistory(){
   document.querySelectorAll<HTMLButtonElement>(".void-sale").forEach(button=>button.addEventListener("click",()=>{
    const key=String(button.dataset.voidKey||""),transactionId=button.dataset.transactionId?String(button.dataset.transactionId):null,saleId=String(button.dataset.saleId||"");
    if(!key)return;
-   const rows=transactionId?sales.filter(x=>String(x.transaction_id||"")===transactionId&&!x.voided):sales.filter(x=>String(x.id||"")===saleId&&!x.voided);
+   if(customEntryMode)return notify("Exit Custom Entry to correct or void an existing transaction.","info");
+   const rows=transactionId?viewSales().filter(x=>String(x.transaction_id||"")===transactionId&&!x.voided):viewSales().filter(x=>String(x.id||"")===saleId&&!x.voided);
    if(!rows.length)return notify("This sale is no longer available. Refresh the history and try again.","info");
    void voidSaleGroup({key,transactionId,rows},button);
   }));
@@ -975,14 +989,14 @@ function today(){
 }
 
 function reports(){
- const recent=customEntryMode&&historicalView?.summary?[historicalView.summary]:daily.filter(x=>x.business_date).slice(0,7);
+ const recent=customEntryMode?(historicalView?.summary?[historicalView.summary]:[]):daily.filter(x=>x.business_date).slice(0,7);
  const selected=reportDate?(reportLookupDate===reportDate?reportLookup:daily.find(x=>x.business_date===reportDate)):null;
- const total=lifetime||{};
- const latest=[...daily,...(reportLookup?[reportLookup]:[]),(lifetime?[lifetime]:[])].map((x:any)=>x.updated_at).filter(Boolean).sort().pop();
+ const total=(customEntryMode&&historicalView?.lifetime)||lifetime||{};
+ const latest=customEntryMode?(selected?.updated_at||""):[...daily,...(reportLookup?[reportLookup]:[]),(lifetime?[lifetime]:[])].map((x:any)=>x.updated_at).filter(Boolean).sort().pop();
  const row=(d:any)=>'<tr><td>'+d.business_date+'</td><td>'+String(d.total_transactions||0)+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.cash_profit)+'</td><td>'+money(d.upi_profit)+'</td><td>'+money(d.credit_profit)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td><td>'+money(d.purchase_credit)+'</td><td>'+money(d.sales_returns)+'</td><td>'+money(d.purchase_returns)+'</td><td>'+money(d.debtor_payment_total)+'</td><td>'+money(d.debtor_payment_cash)+'</td><td>'+money(d.debtor_payment_upi)+'</td><td>'+money(d.purchase_credit_payment_total)+'</td><td>'+money(d.purchase_credit_payment_cash)+'</td><td>'+money(d.purchase_credit_payment_upi)+'</td></tr>';
  const rows=selected?[selected]:recent;
  const status=reportLookupLoading?'Loading selected date…':reportDate&&!selected?'No aggregate exists for this date.':"";
- return '<section class="page reports-page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div><p class="muted">Latest 7 days are shown by default. Search any past business date directly; the selected date is fetched from the database. '+(latest?'Last update: '+fmt(latest):'')+'</p>'+(status?'<p class="muted">'+esc(status)+'</p>':"")+'<div class="table-wrap swipeable reports-scroll"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th><th>Supplier Paid</th><th>Supplier Cash</th><th>Supplier UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="21" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
+ return '<section class="page reports-page"><h2>Reports</h2><div class="metrics">'+m(customEntryMode?"Sales through selected date":"Lifetime Sales",money(total.lifetime_sales))+m(customEntryMode?"Purchases through selected date":"Lifetime Purchases",money(total.lifetime_purchases))+m(customEntryMode?"Profit through selected date":"Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3>'+(customEntryMode?'<span class="muted">Selected date: '+esc(viewingLabel())+'</span>':'<label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label>')+'</div><p class="muted">'+(customEntryMode?"Financials and cumulative totals are as of the selected Custom Entry date. Stock and account setup remain live.":"Latest 7 days are shown by default. Search any past business date directly; the selected date is fetched from the database.")+' '+(latest?'Last update: '+fmt(latest):'')+'</p>'+(status?'<p class="muted">'+esc(status)+'</p>':"")+'<div class="table-wrap swipeable reports-scroll"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th><th>Supplier Paid</th><th>Supplier Cash</th><th>Supplier UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="21" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
 }
 
 function workers(){
@@ -991,9 +1005,9 @@ function workers(){
 }
 
 function audit(){
- const d=auditDate||viewingBusinessDate();
- const rows=viewAudit().filter(a=>transactionBusinessDate(a,a.created_at)===d);
- return '<section class="page audit-page"><div class="page-head"><div><h2>Audit</h2><p class="muted">Owner only · retained audit detail is available for 30 days.</p></div><div class="action-row"><label class="date-inline">Date<input id="auditDate" type="date" value="'+esc(auditDate||viewingBusinessDate())+'"></label><button id="deleteAuditDate" class="ghost">Delete This Date</button></div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead><tbody>'+rows.map(a=>'<tr><td>'+fmt(a.created_at)+'</td><td>'+esc(a.profiles?.full_name||a.actor_id||"System")+'</td><td>'+esc(a.action)+'</td><td>'+esc(a.entity_type)+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="4" class="muted">No audit records for this date.</td></tr>')+'</tbody></table></div></div></section>';
+ const d=customEntryMode?viewingBusinessDate():auditDate||viewingBusinessDate();
+ const rows=viewAudit().filter(a=>String(a.details?.business_date||transactionBusinessDate(a,a.created_at))===d);
+ return '<section class="page audit-page"><div class="page-head"><div><h2>Audit</h2><p class="muted">Owner only · retained audit detail is available for 30 days.</p></div><div class="action-row">'+(customEntryMode?'<span class="muted">Selected date: '+esc(viewingLabel())+'</span>':'<label class="date-inline">Date<input id="auditDate" type="date" value="'+esc(auditDate||viewingBusinessDate())+'"></label><button id="deleteAuditDate" class="ghost">Delete This Date</button>')+'</div></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead><tbody>'+rows.map(a=>'<tr><td>'+fmt(a.created_at)+'</td><td>'+esc(a.profiles?.full_name||a.actor_id||"System")+'</td><td>'+esc(a.action)+'</td><td>'+esc(a.entity_type)+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="4" class="muted">No audit records for this date.</td></tr>')+'</tbody></table></div></div></section>';
 }
 
 function settingsView(){
@@ -1008,6 +1022,11 @@ function settingsView(){
  return '<section class="page settings-page"><h2>Settings</h2><div class="panel"><form id="settingsForm" class="form-grid"><label>Shop name<input name="shop_name" value="'+esc(settings.shop_name)+'" required></label><label>Shop ID<input value="'+esc(settings.shop_id||profile?.shop_id||"Not configured")+'" readonly></label><label>Currency<input name="currency" value="'+esc(settings.currency||"INR")+'" required></label><label>Timezone<input name="timezone" value="'+esc(settings.timezone||"Asia/Kolkata")+'" required></label><label>Theme<select name="theme"><option value="current" '+(currentTheme()==="current"?"selected":"")+'>Current Theme</option><option value="light-pink" '+(currentTheme()==="light-pink"?"selected":"")+'>Light Pink</option><option value="pink" '+(currentTheme()==="pink"?"selected":"")+'>Pink</option></select></label><label>Dashboard reset time<div class="form-grid"><select name="resetHour">'+hourOptions+'</select><select name="resetMinute">'+minuteOptions+'</select><select name="resetPeriod">'+periodOptions+'</select></div><span class="tiny">12-hour AM/PM</span></label><label class="check"><input type="checkbox" name="allow_below_cost_sales" '+(settings.allow_below_cost_sales!==false?"checked":"")+'> Allow sales below purchase cost</label><label class="check"><input type="checkbox" name="allow_zero_price_sales" '+(settings.allow_zero_price_sales!==false?"checked":"")+'> Allow zero-price/free sales</label><label class="check"><input type="checkbox" name="workers_can_modify_selling_price" '+(settings.workers_can_modify_selling_price===true?"checked":"")+'> Workers can modify selling price</label><div class="full"><button class="primary">Save Settings</button></div></form></div><div class="panel"><h3>Supabase Project</h3><p class="muted">Owner can verify or change the connected project.</p><div class="action-row"><button id="verifyDb" class="ghost" type="button">Verify Database</button><button id="downloadSqlSettingsBtn" class="ghost" type="button">Download SQL</button><button id="downloadConnectionBtn" class="ghost" type="button">Download URL + Key</button><button id="appUpdateSettings" class="ghost" type="button">Check for App Update</button><button id="changeDb" class="ghost" type="button">Change Supabase Project</button></div></div><div class="panel"><div class="action-row"><button id="shopIdCopy" class="ghost">Copy Shop ID</button><button id="exportBtn" class="ghost">Export JSON Backup</button><button id="downloadReport" class="ghost">Download Complete TXT Report</button><button id="clearAll" class="danger">Clear All Transaction Data</button></div></div></section>';
 }
 function bindSettings(){
+ const stopLiveOnlyAction=(selector:string,message:string)=>document.querySelector<HTMLElement>(selector)?.addEventListener("click",e=>{if(customEntryMode){e.preventDefault();e.stopImmediatePropagation();notify(message,"info")}},true);
+ document.querySelector("#settingsForm")?.addEventListener("submit",e=>{if(customEntryMode){e.preventDefault();e.stopImmediatePropagation();notify("Exit Custom Entry to change settings. Settings apply to the live shop.","info")}},true);
+ stopLiveOnlyAction("#changeDb","Exit Custom Entry before switching the shop database.");
+ stopLiveOnlyAction("#downloadReport","Exit Custom Entry to download the complete live-shop report.");
+ stopLiveOnlyAction("#clearAll","Exit Custom Entry before using Clear All.");
  document.querySelector("#appUpdateSettings")?.addEventListener("click",async()=>{const b=document.querySelector<HTMLButtonElement>("#appUpdateSettings");if(b){b.disabled=true;b.textContent="Checking..."}try{await checkForAppUpdate((text,type)=>notify(text,type==="danger"?"error":"info"))}finally{const x=document.querySelector<HTMLButtonElement>("#appUpdateSettings");if(x){x.disabled=false;x.textContent="Check for App Update"}}});
  document.querySelector("#settingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget as HTMLFormElement,fd=new FormData(f),tz=String(fd.get("timezone")||"").trim();try{new Intl.DateTimeFormat("en-US",{timeZone:tz}).format()}catch{return notify("Invalid IANA timezone.","error")}const h=Number(fd.get("resetHour")||12),mi=String(fd.get("resetMinute")||"00"),period=String(fd.get("resetPeriod")||"AM"),h24=period==="AM"?(h===12?0:h):(h===12?12:h+12),next={shop_name:String(fd.get("shop_name")),currency:String(fd.get("currency")),timezone:tz,dashboard_reset_time:String(h24).padStart(2,"0")+":"+mi,allow_below_cost_sales:fd.get("allow_below_cost_sales")==="on",allow_zero_price_sales:fd.get("allow_zero_price_sales")==="on",workers_can_modify_selling_price:fd.get("workers_can_modify_selling_price")==="on",theme:normalizeTheme(fd.get("theme"))};applyTheme(next.theme);if(demo){settings={...settings,...next};notify("Settings saved.","success");render();return}const r=await supabase!.from("shop_settings").update({...next,updated_at:new Date().toISOString()}).eq("id",1);if(r.error)return notify(r.error.message,"error");settings={...settings,...next};notify("Settings saved.","success");render()});
  document.querySelector("#verifyDb")?.addEventListener("click",async()=>{
@@ -1312,18 +1331,18 @@ function bind(){
  document.querySelectorAll<HTMLElement>("[data-custom-entry-open]").forEach(button=>button.addEventListener("click",async()=>{
   if(profile?.role!=="owner")return notify("Owner access is required for Custom Entry.","error");
   if(demo)return notify("Custom Entry needs your connected shop database; demo transactions are temporary.","error");
-  if(!customEntryMode){customEntryMode=true;customEntryDate=businessDate();historyDate=customEntryDate;historyRange="date";reportDate=customEntryDate;purchaseDate=customEntryDate;auditDate=customEntryDate}
+  if(!customEntryMode){if(cartItems.length){cartItems=[];notify("Unsaved cart cleared before entering Custom Entry.","info")}customEntryMode=true;customEntryDate=businessDate();historyDate=customEntryDate;historyRange="date";reportDate=customEntryDate;purchaseDate=customEntryDate;auditDate=customEntryDate}
   const ok=await loadHistoricalView(customEntryDate);
   if(!ok){customEntryMode=false;customEntryDate="";historicalView=null;return}
   await loadReportDate(customEntryDate);activeTab="custom";render();
 }));
  document.querySelector("#exitCustomEntry")?.addEventListener("click",async()=>{
-  customEntryMode=false;customEntryDate="";historicalView=null;historyDate="";historyRange="today";reportDate="";purchaseDate="";auditDate="";reportLookup=null;reportLookupDate="";reportLookupLoading=false;dashboardSummaryKind="";activeTab="dashboard";await loadData();render();
+  if(cartItems.length){cartItems=[];notify("Unsaved custom-date cart cleared.","info")}customEntryMode=false;customEntryDate="";historicalView=null;historyDate="";historyRange="today";reportDate="";purchaseDate="";auditDate="";reportLookup=null;reportLookupDate="";reportLookupLoading=false;dashboardSummaryKind="";activeTab="dashboard";await loadData();render();
  });
  document.querySelector<HTMLInputElement>("#customEntryDate")?.addEventListener("change",async e=>{
   const date=(e.currentTarget as HTMLInputElement).value;
   if(!date||date>businessDate()){notify("Choose today or an earlier business date.","error");(e.currentTarget as HTMLInputElement).value=customEntryDate||businessDate();return}
-  const previous=customEntryDate;customEntryDate=date;historyDate=date;historyRange="date";reportDate=date;purchaseDate=date;auditDate=date;
+  const previous=customEntryDate;if(cartItems.length){cartItems=[];notify("Unsaved cart cleared because the Custom Entry date changed.","info")}customEntryDate=date;historyDate=date;historyRange="date";reportDate=date;purchaseDate=date;auditDate=date;
   const ok=await loadHistoricalView(date);
   if(!ok){customEntryDate=previous;(e.currentTarget as HTMLInputElement).value=previous;return}
   await loadReportDate(date);render();
