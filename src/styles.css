@@ -2115,3 +2115,66 @@ input[type="number"]::-webkit-inner-spin-button{
 
 /* Do not let the global icon treatment alter Home's layout. */
 .dashboard-page .home-search-row>button::before{display:none}
+
+
+/* Quantity controls: explicit reference-style minus / value / plus controls. */
+.qty-stepper{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) 38px;
+  align-items:stretch;
+  width:100%;
+  min-height:46px;
+  border:1px solid #2c3a56;
+  border-radius:12px;
+  overflow:hidden;
+  background:#0d1526;
+}
+.qty-stepper>input[type="number"]{
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  border:0!important;
+  border-left:1px solid #263650!important;
+  border-right:1px solid #263650!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  text-align:center;
+  background:#10192c;
+}
+.qty-stepper>input[type="number"]:focus{
+  background:#141f35;
+  box-shadow:none!important;
+}
+.qty-stepper-btn{
+  min-height:44px!important;
+  min-width:38px!important;
+  width:38px;
+  height:44px;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border:0!important;
+  border-radius:0!important;
+  background:#141f34!important;
+  color:#dbe4f5!important;
+  box-shadow:none!important;
+}
+.qty-stepper-btn:hover{
+  background:#1d2a45!important;
+  color:#fff!important;
+  transform:none!important;
+}
+.qty-stepper-btn:active{
+  background:#26375a!important;
+  transform:none!important;
+}
+.qty-stepper-btn .ui-icon{
+  width:15px;
+  height:15px;
+}
+.qty-minus .ui-icon{color:#a9b6cc}
+.qty-plus .ui-icon{color:#a98cff}
+.qty-stepper:focus-within{
+  border-color:#7050ff;
+  box-shadow:0 0 0 3px rgba(112,80,255,.12);
+}
