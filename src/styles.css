@@ -3012,3 +3012,89 @@ input[type="number"]::-webkit-outer-spin-button{
 :root[data-theme="pink"] .date-inline::before{
   background:var(--muted);
 }
+
+
+/* ============================================================
+   IN-APP NAVIGATION SURFACES
+   Dashboard summaries and More are normal page content.
+   They never float outside/over the app shell.
+   ============================================================ */
+.dashboard-summary-inline{
+  margin-top:14px;
+  padding:0;
+  overflow:hidden;
+}
+.dashboard-summary-inline .dashboard-summary-headbar{
+  position:static;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:13px 14px;
+  border-bottom:1px solid var(--border);
+  background:var(--surface);
+}
+.dashboard-summary-inline .dashboard-summary-headbar h3{
+  margin:0;
+}
+.dashboard-summary-inline .dashboard-summary-headbar small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:9px;
+}
+.dashboard-summary-inline .dashboard-summary-content{
+  max-height:430px;
+  overflow:auto;
+  padding:7px 12px 12px;
+  background:var(--surface);
+}
+.dashboard-summary-inline .dashboard-summary-head{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:var(--surface)!important;
+}
+.dashboard-summary-inline .dashboard-summary-row{
+  background:transparent;
+}
+.more-page-menu{
+  margin-top:0;
+}
+.more-page-menu .more-menu{
+  display:grid;
+  gap:7px;
+}
+.more-page-menu .more-menu-item{
+  min-height:58px;
+  background:var(--surface-2);
+  border-color:var(--border);
+  color:var(--text);
+}
+.more-page-menu .more-menu-item:hover{
+  background:var(--surface-3);
+  border-color:var(--border-strong);
+}
+
+/* Light themes: keep these surfaces fully integrated with the page. */
+:root[data-theme="light-pink"] .dashboard-summary-inline,
+:root[data-theme="pink"] .dashboard-summary-inline,
+:root[data-theme="light-pink"] .dashboard-summary-inline .dashboard-summary-headbar,
+:root[data-theme="pink"] .dashboard-summary-inline .dashboard-summary-headbar,
+:root[data-theme="light-pink"] .dashboard-summary-inline .dashboard-summary-content,
+:root[data-theme="pink"] .dashboard-summary-inline .dashboard-summary-content{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:none;
+}
+:root[data-theme="light-pink"] .dashboard-summary-inline .dashboard-summary-row,
+:root[data-theme="pink"] .dashboard-summary-inline .dashboard-summary-row{
+  border-color:var(--border)!important;
+  background:transparent!important;
+}
+:root[data-theme="light-pink"] .more-page-menu,
+:root[data-theme="pink"] .more-page-menu{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+}
