@@ -209,7 +209,7 @@ export function createCartCreditFeature(ctx: FeatureContext) {
   }
 
   function bindCartSteppers() {
-    const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="quantity"],input[type="number"][name="price"]'));
+    const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"]'));
     inputs.forEach(input=>{
       if(input.closest(".qty-stepper"))return;
       const wrap=document.createElement("div");
@@ -220,7 +220,7 @@ export function createCartCreditFeature(ctx: FeatureContext) {
         const b=document.createElement("button");
         b.type="button";
         b.className=direction<0?"qty-stepper-btn qty-minus":"qty-stepper-btn qty-plus";
-        b.setAttribute("aria-label",direction<0?"Decrease value":"Increase value");
+        b.setAttribute("aria-label",direction<0?"Decrease by 1":"Increase by 1");
         b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
         b.addEventListener("click",()=>{
           if(input.readOnly||input.disabled)return;
