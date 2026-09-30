@@ -68,6 +68,7 @@ create table if not exists public.products (
   purchase_price_per_base_unit numeric(12,2) not null default 0 check (purchase_price_per_base_unit >= 0),
   selling_price_per_base_unit numeric(12,2) not null default 0 check (selling_price_per_base_unit >= 0),
   low_stock_threshold_base numeric(14,3) not null default 0 check (low_stock_threshold_base >= 0),
+  photo_path text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -432,6 +433,35 @@ end;
 $$;
 
 revoke execute on function public.create_product(text,public.product_unit,numeric,numeric,numeric,numeric) from public, anon;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('product-photos','product-photos',true,5242880,array['image/webp','image/jpeg','image/png']::text[])
+on conflict (id) do update set public=true,file_size_limit=5242880,allowed_mime_types=array['image/webp','image/jpeg','image/png']::text[];
+
+drop policy if exists "product photos upload active users" on storage.objects;
+create policy "product photos upload active users" on storage.objects for insert to authenticated
+with check (bucket_id='product-photos' and (select public.is_active_user()) and name like 'products/%');
+drop policy if exists "product photos update active users" on storage.objects;
+create policy "product photos update active users" on storage.objects for update to authenticated
+using (bucket_id='product-photos' and (select public.is_active_user()))
+with check (bucket_id='product-photos' and (select public.is_active_user()));
+drop policy if exists "product photos delete active users" on storage.objects;
+create policy "product photos delete active users" on storage.objects for delete to authenticated
+using (bucket_id='product-photos' and (select public.is_active_user()));
+
+create or replace function public.set_product_photo(p_product_id uuid,p_photo_path text)
+returns void language plpgsql security definer set search_path=''
+as $
+begin
+  if not (select public.is_active_user()) then raise exception 'Account is inactive'; end if;
+  if p_photo_path is not null and p_photo_path not like 'products/'||p_product_id::text||'/%' then raise exception 'Invalid product photo path'; end if;
+  update public.products set photo_path=p_photo_path,updated_at=now() where id=p_product_id and is_active=true;
+  if not found then raise exception 'Product not found or inactive'; end if;
+end;
+$;
+revoke all on function public.set_product_photo(uuid,text) from public,anon;
+grant execute on function public.set_product_photo(uuid,text) to authenticated;
+
 grant execute on function public.create_product(text,public.product_unit,numeric,numeric,numeric,numeric) to authenticated;
 
 grant execute on function public.create_product(text,public.product_unit,numeric,numeric,numeric,numeric) to authenticated;
@@ -5511,5 +5541,5 @@ grant execute on function public.record_sale_return(uuid,numeric,numeric,text,nu
 
 select pg_notify('pgrst','reload schema');
 create table if not exists public.shop_management_schema_version(version integer primary key,applied_at timestamptz not null default now());
-insert into public.shop_management_schema_version(version) values(7) on conflict(version) do nothing;
+insert into public.shop_management_schema_version(version) values(10) on conflict(version) do nothing;
 
