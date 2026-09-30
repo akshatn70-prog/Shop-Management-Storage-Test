@@ -2648,3 +2648,367 @@ input[type="number"]::-webkit-outer-spin-button{
 :root[data-theme="pink"] .more-menu-item .chevron{
   color:var(--muted)!important;
 }
+
+/* ============================================================
+   FINAL LIGHT/PINK SURFACE CLEANUP
+   The original "current" theme is intentionally untouched.
+   These overrides remove remaining hard-coded navy/dark surfaces
+   from Light Pink and Pink themes across every screen.
+   ============================================================ */
+
+:root[data-theme="light-pink"],
+:root[data-theme="pink"]{
+  --theme-card:var(--surface);
+  --theme-card-2:var(--surface-2);
+  --theme-card-3:var(--surface-3);
+  --theme-line:var(--border);
+  --theme-ink:var(--text);
+  --theme-soft-ink:var(--text-soft);
+}
+
+:root[data-theme="light-pink"] .panel,
+:root[data-theme="pink"] .panel,
+:root[data-theme="light-pink"] .login-card,
+:root[data-theme="pink"] .login-card{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:var(--shadow-soft);
+}
+
+:root[data-theme="light-pink"] .quick-grid button:not(.primary),
+:root[data-theme="pink"] .quick-grid button:not(.primary),
+:root[data-theme="light-pink"] .product-card,
+:root[data-theme="pink"] .product-card{
+  background:linear-gradient(145deg,var(--surface-2),var(--surface))!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:var(--shadow-soft);
+}
+
+:root[data-theme="light-pink"] .product-card b,
+:root[data-theme="pink"] .product-card b,
+:root[data-theme="light-pink"] .product-card strong,
+:root[data-theme="pink"] .product-card strong,
+:root[data-theme="light-pink"] .product-card span,
+:root[data-theme="pink"] .product-card span{
+  color:var(--text)!important;
+}
+
+:root[data-theme="light-pink"] .form-grid,
+:root[data-theme="pink"] .form-grid,
+:root[data-theme="light-pink"] .sale-page .form-grid,
+:root[data-theme="pink"] .sale-page .form-grid,
+:root[data-theme="light-pink"] .cart-page .form-grid,
+:root[data-theme="pink"] .cart-page .form-grid,
+:root[data-theme="light-pink"] .returns-page .form-grid,
+:root[data-theme="pink"] .returns-page .form-grid,
+:root[data-theme="light-pink"] .creditors-page .form-grid,
+:root[data-theme="pink"] .creditors-page .form-grid,
+:root[data-theme="light-pink"] .debtors-page .form-grid,
+:root[data-theme="pink"] .debtors-page .form-grid{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+
+:root[data-theme="light-pink"] .seg,
+:root[data-theme="pink"] .seg{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .seg button,
+:root[data-theme="pink"] .seg button{
+  color:var(--muted)!important;
+  background:transparent!important;
+}
+:root[data-theme="light-pink"] .seg button:hover,
+:root[data-theme="pink"] .seg button:hover{
+  color:var(--text)!important;
+  background:var(--surface-3)!important;
+}
+
+:root[data-theme="light-pink"] .table-wrap,
+:root[data-theme="pink"] .table-wrap,
+:root[data-theme="light-pink"] .history-page .table-wrap,
+:root[data-theme="pink"] .history-page .table-wrap,
+:root[data-theme="light-pink"] .reports-page .table-wrap,
+:root[data-theme="pink"] .reports-page .table-wrap,
+:root[data-theme="light-pink"] .audit-page .table-wrap,
+:root[data-theme="pink"] .audit-page .table-wrap{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+}
+
+:root[data-theme="light-pink"] th,
+:root[data-theme="pink"] th{
+  background:var(--surface-2)!important;
+  color:var(--muted)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] td,
+:root[data-theme="pink"] td{
+  background:transparent!important;
+  color:var(--text)!important;
+  border-color:var(--border)!important;
+}
+
+:root[data-theme="light-pink"] .stock-page .table-wrap tr,
+:root[data-theme="pink"] .stock-page .table-wrap tr,
+:root[data-theme="light-pink"] .cart-page .table-wrap tbody tr,
+:root[data-theme="pink"] .cart-page .table-wrap tbody tr,
+:root[data-theme="light-pink"] .history-page .table-wrap tbody tr,
+:root[data-theme="pink"] .history-page .table-wrap tbody tr,
+:root[data-theme="light-pink"] .audit-page .table-wrap tbody tr,
+:root[data-theme="pink"] .audit-page .table-wrap tbody tr,
+:root[data-theme="light-pink"] .workers-page .table-wrap tr,
+:root[data-theme="pink"] .workers-page .table-wrap tr{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+
+:root[data-theme="light-pink"] .history-page .table-wrap tbody tr+tr,
+:root[data-theme="pink"] .history-page .table-wrap tbody tr+tr,
+:root[data-theme="light-pink"] .audit-page .table-wrap tbody tr+tr,
+:root[data-theme="pink"] .audit-page .table-wrap tbody tr+tr{
+  border-top-color:var(--surface-3)!important;
+}
+
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(1),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(1){
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(2),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(2),
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(3),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(3),
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(4),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(4){
+  color:var(--text-soft)!important;
+}
+
+:root[data-theme="light-pink"] .smallbtn,
+:root[data-theme="pink"] .smallbtn,
+:root[data-theme="light-pink"] .badge,
+:root[data-theme="pink"] .badge,
+:root[data-theme="light-pink"] .notice,
+:root[data-theme="pink"] .notice{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+  color:var(--text-soft)!important;
+}
+
+:root[data-theme="light-pink"] .settings-page .panel .action-row button,
+:root[data-theme="pink"] .settings-page .panel .action-row button{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .settings-page .panel .action-row button:hover,
+:root[data-theme="pink"] .settings-page .panel .action-row button:hover{
+  background:var(--surface-3)!important;
+}
+
+:root[data-theme="light-pink"] .more-sheet-panel,
+:root[data-theme="pink"] .more-sheet-panel,
+:root[data-theme="light-pink"] .more-menu-item,
+:root[data-theme="pink"] .more-menu-item{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .more-menu-item:hover,
+:root[data-theme="pink"] .more-menu-item:hover{
+  background:var(--surface-3)!important;
+}
+:root[data-theme="light-pink"] .more-sheet-backdrop,
+:root[data-theme="pink"] .more-sheet-backdrop{
+  background:rgba(120,28,75,.16)!important;
+}
+
+:root[data-theme="light-pink"] .home-search-panel,
+:root[data-theme="pink"] .home-search-panel,
+:root[data-theme="light-pink"] .home-search-result,
+:root[data-theme="pink"] .home-search-result,
+:root[data-theme="light-pink"] .home-search-row button,
+:root[data-theme="pink"] .home-search-row button{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .home-search-row input,
+:root[data-theme="pink"] .home-search-row input{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .home-search-result:hover,
+:root[data-theme="pink"] .home-search-result:hover{
+  background:var(--surface-3)!important;
+  border-color:var(--accent)!important;
+}
+:root[data-theme="light-pink"] .home-search-result-icon,
+:root[data-theme="pink"] .home-search-result-icon{
+  background:var(--surface-3)!important;
+}
+:root[data-theme="light-pink"] .home-search-result small,
+:root[data-theme="pink"] .home-search-result small,
+:root[data-theme="light-pink"] .home-search-empty,
+:root[data-theme="pink"] .home-search-empty,
+:root[data-theme="light-pink"] .stock-search-status,
+:root[data-theme="pink"] .stock-search-status{
+  color:var(--muted)!important;
+}
+
+:root[data-theme="light-pink"] .stock-list-panel,
+:root[data-theme="pink"] .stock-list-panel,
+:root[data-theme="light-pink"] .stock-page #stockForm > .panel,
+:root[data-theme="pink"] .stock-page #stockForm > .panel{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+}
+
+:root[data-theme="light-pink"] .recent-activity-row,
+:root[data-theme="pink"] .recent-activity-row{
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .recent-activity-main small,
+:root[data-theme="pink"] .recent-activity-main small,
+:root[data-theme="light-pink"] .recent-activity-total small,
+:root[data-theme="pink"] .recent-activity-total small{
+  color:var(--muted)!important;
+}
+
+:root[data-theme="light-pink"] .qty-stepper,
+:root[data-theme="pink"] .qty-stepper{
+  background:var(--surface-2)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .qty-stepper>input[type="number"],
+:root[data-theme="pink"] .qty-stepper>input[type="number"]{
+  background:var(--surface)!important;
+  color:var(--text)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .qty-stepper>input[type="number"]:focus,
+:root[data-theme="pink"] .qty-stepper>input[type="number"]:focus{
+  background:var(--surface)!important;
+}
+:root[data-theme="light-pink"] .qty-stepper-btn,
+:root[data-theme="pink"] .qty-stepper-btn{
+  background:var(--surface-2)!important;
+  color:var(--text-soft)!important;
+}
+:root[data-theme="light-pink"] .qty-stepper-btn:hover,
+:root[data-theme="pink"] .qty-stepper-btn:hover{
+  background:var(--surface-3)!important;
+  color:var(--text)!important;
+}
+
+:root[data-theme="light-pink"] .dashboard-summary-panel,
+:root[data-theme="pink"] .dashboard-summary-panel,
+:root[data-theme="light-pink"] .dashboard-summary-headbar,
+:root[data-theme="pink"] .dashboard-summary-headbar,
+:root[data-theme="light-pink"] .dashboard-summary-content,
+:root[data-theme="pink"] .dashboard-summary-content,
+:root[data-theme="light-pink"] .dashboard-summary-head,
+:root[data-theme="pink"] .dashboard-summary-head{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .dashboard-summary-row,
+:root[data-theme="pink"] .dashboard-summary-row{
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .dashboard-summary-row b,
+:root[data-theme="pink"] .dashboard-summary-row b,
+:root[data-theme="light-pink"] .dashboard-summary-row span,
+:root[data-theme="pink"] .dashboard-summary-row span{
+  color:var(--text-soft)!important;
+}
+
+:root[data-theme="light-pink"] .toast,
+:root[data-theme="pink"] .toast{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:var(--shadow);
+}
+:root[data-theme="light-pink"] .toast.success,
+:root[data-theme="pink"] .toast.success{
+  background:#eefbf4!important;
+  border-color:#a9dec2!important;
+  color:#17633f!important;
+}
+:root[data-theme="light-pink"] .toast.error,
+:root[data-theme="pink"] .toast.error{
+  background:#fff0f2!important;
+  border-color:#efb0bc!important;
+  color:#9f2944!important;
+}
+:root[data-theme="light-pink"] .toast.info,
+:root[data-theme="pink"] .toast.info{
+  background:#eef8ff!important;
+  border-color:#abd5ed!important;
+  color:#17628a!important;
+}
+
+:root[data-theme="light-pink"] .bottom-nav,
+:root[data-theme="pink"] .bottom-nav{
+  background:rgba(255,247,251,.97)!important;
+  border-top-color:var(--border)!important;
+  box-shadow:0 -14px 38px rgba(120,28,75,.10);
+}
+:root[data-theme="light-pink"] .bottom-nav button,
+:root[data-theme="pink"] .bottom-nav button{
+  color:var(--muted)!important;
+}
+:root[data-theme="light-pink"] .bottom-nav button:hover,
+:root[data-theme="pink"] .bottom-nav button:hover{
+  color:var(--text)!important;
+  background:var(--surface-3)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .bottom-nav button.active,
+:root[data-theme="pink"] .bottom-nav button.active{
+  color:var(--accent)!important;
+  background:var(--accent-soft)!important;
+  border-color:rgba(237,63,136,.22)!important;
+}
+
+:root[data-theme="light-pink"] .swipe-scroll,
+:root[data-theme="pink"] .swipe-scroll,
+:root[data-theme="light-pink"] .table-wrap,
+:root[data-theme="pink"] .table-wrap,
+:root[data-theme="light-pink"] .reports-scroll,
+:root[data-theme="pink"] .reports-scroll{
+  scrollbar-color:var(--border-strong) var(--surface-2);
+}
+:root[data-theme="light-pink"] .swipe-scroll::-webkit-scrollbar-track,
+:root[data-theme="pink"] .swipe-scroll::-webkit-scrollbar-track,
+:root[data-theme="light-pink"] .table-wrap::-webkit-scrollbar-track,
+:root[data-theme="pink"] .table-wrap::-webkit-scrollbar-track,
+:root[data-theme="light-pink"] .reports-scroll::-webkit-scrollbar-track,
+:root[data-theme="pink"] .reports-scroll::-webkit-scrollbar-track{
+  background:var(--surface-2);
+}
+:root[data-theme="light-pink"] .swipe-scroll::-webkit-scrollbar-thumb,
+:root[data-theme="pink"] .swipe-scroll::-webkit-scrollbar-thumb,
+:root[data-theme="light-pink"] .table-wrap::-webkit-scrollbar-thumb,
+:root[data-theme="pink"] .table-wrap::-webkit-scrollbar-thumb,
+:root[data-theme="light-pink"] .reports-scroll::-webkit-scrollbar-thumb,
+:root[data-theme="pink"] .reports-scroll::-webkit-scrollbar-thumb{
+  background:var(--border-strong);
+  border-color:var(--surface-2);
+}
+
+:root[data-theme="light-pink"] input[type="date"],
+:root[data-theme="pink"] input[type="date"]{
+  color-scheme:light;
+}
+:root[data-theme="light-pink"] .date-inline::before,
+:root[data-theme="pink"] .date-inline::before{
+  background:var(--muted);
+}
