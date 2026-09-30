@@ -16,6 +16,7 @@ Purchase/Stock Entry → Current Stock → Worker Sales → Automatic Stock Redu
 - View stock, sales, profit, cash, UPI and reconciliation
 - Manage worker profiles and roles
 - Correct sales without deleting the historical record
+- Use Custom Entry to record a missed sale, purchase, return, or account payment for a prior business date
 - View automatic daily closing and day-end summaries
 - Reports and history
 - Audit trail
@@ -42,6 +43,10 @@ Purchase/Stock Entry → Current Stock → Worker Sales → Automatic Stock Redu
 The active app workflow records each sale immediately. Stock, revenue, cost, gross profit, Cash/UPI and the automatic day-end/daily-closing views are derived from those recorded sales. Legacy day-end/closing RPCs remain database-compatible for existing installations, but the current UI does not require duplicate worker submission or owner confirmation.
 
 Mistakes are corrected by **voiding** a sale with a reason and restoring its stock. Historical rows are retained.
+
+### Custom Entry
+
+Owners can open **More → Custom Entry**, choose today or an earlier business date, and use the app's usual sale, cart, purchase, return, and payment screens. These entries pass through the same database transaction functions and stock, balance, and payment checks as ordinary entries. Inventory changes immediately when the entry is saved; the transaction and daily reports use the selected business date. Custom entries are excluded from automatic detail-retention cleanup.
 
 ## Reconciliation and closing
 

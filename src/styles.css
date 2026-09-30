@@ -3205,3 +3205,15 @@ input[type="number"]::-webkit-outer-spin-button{
 /* Recent activity uses the same 29px icon slot for product photos. */
 .recent-activity-product-photo{overflow:hidden;padding:0}
 .recent-activity-product-photo img{width:100%;height:100%;display:block;object-fit:cover;border-radius:inherit}
+
+/* Owner-only historical entry mode */
+.custom-entry-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 18px;background:#3b2e12;border-bottom:1px solid #8b6b24;color:#fff4d0}
+.custom-entry-bar>div{display:flex;flex-direction:column;gap:2px;margin-right:auto}
+.custom-entry-bar small{font-size:12px;opacity:.85}
+.custom-entry-bar label{display:flex;align-items:center;gap:8px;font-size:13px}
+.custom-entry-bar input{min-height:38px;padding:7px 10px;border:1px solid #a8842d;border-radius:9px;background:#201a0d;color:#fff}
+.custom-entry-launch{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.custom-entry-launch h3{margin:0 0 5px}
+.custom-entry-launch p{margin:0}
+.custom-entry-page .notice{margin-bottom:14px}
+@media(max-width:520px){.custom-entry-bar{padding:10px 12px;gap:9px}.custom-entry-bar>div{flex-basis:100%}.custom-entry-bar label{flex:1}.custom-entry-bar input{min-width:0;width:100%}}
