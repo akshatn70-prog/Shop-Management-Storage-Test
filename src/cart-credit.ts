@@ -224,10 +224,18 @@ export function createCartCreditFeature(ctx: FeatureContext) {
         b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
         b.addEventListener("click",()=>{
           if(input.readOnly||input.disabled)return;
-          let value=Number(input.value);
+          const minAttr=Number(input.min);
+          const maxAttr=Number(input.max);
+          const min=Number.isFinite(minAttr)?minAttr:-Infinity;
+          const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
+          const currentText=input.value.trim();
+          let value=currentText===""?0:Number(currentText);
           if(!Number.isFinite(value))value=0;
-          value=Math.max(0,value+direction);
-          input.value=String(Math.round(value));
+          value+=direction;
+          value=Math.max(min,Math.min(max,value));
+          const stepText=String(input.step||"");
+          const decimals=Math.max((currentText.split(".")[1]||"").length,(stepText.split(".")[1]||"").length);
+          input.value=decimals?value.toFixed(decimals):String(value);
           input.dispatchEvent(new Event("input",{bubbles:true}));
           input.dispatchEvent(new Event("change",{bubbles:true}));
         });
