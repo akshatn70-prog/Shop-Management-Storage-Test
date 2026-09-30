@@ -20,7 +20,7 @@ let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:A
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
 let customEntryMode=false, customEntryDate="";
 let reportLookup:AnyRow|null=null, reportLookupDate="", reportLookupLoading=false;
-let historicalView:{business_date:string;sales:AnyRow[];purchases:AnyRow[];ledger:AnyRow[];debtorLedger:AnyRow[];returns:AnyRow[];audit:AnyRow[];summary:AnyRow|null}|null=null;
+let historicalView:{business_date:string;sales:AnyRow[];purchases:AnyRow[];ledger:AnyRow[];debtorLedger:AnyRow[];returns:AnyRow[];audit:AnyRow[];summary:AnyRow|null;creditBalances:Record<string,number>;debtorBalances:Record<string,number>}|null=null;
 const viewingBusinessDate=()=>customEntryMode&&customEntryDate?customEntryDate:businessDate();
 const viewingLabel=()=>customEntryMode&&customEntryDate?new Date(customEntryDate+"T12:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):localDate();
 const viewSales=()=>historicalView?.sales??sales;
@@ -195,8 +195,8 @@ function buildDemo(){
 
 let demoData:ReturnType<typeof buildDemo>|null=null;
 function initDemo(){if(!demoData)demoData=buildDemo();const d=demoData;products=d.products;sales=d.sales;purchases=d.purchases;creditors=d.creditors;ledger=d.ledger;debtors=d.debtors;debtorLedger=d.debtorLedger;daily=d.daily;auditRows=d.audit;returnsRows=[];workersRows=d.workers;lifetime=d.lifetime;settings={shop_name:"Demo Grocery Store",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:true,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00",theme:"current"};profile=d.owner;demo=true;demoReady=true}
-function qBalance(id:string){return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
-function dBalance(id:string){return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
+function qBalance(id:string){if(customEntryMode&&historicalView?.creditBalances&&Object.prototype.hasOwnProperty.call(historicalView.creditBalances,id))return Number(historicalView.creditBalances[id]||0);return ledger.filter(x=>x.creditor_id===id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount):x.type==="payment_received"?-Number(x.amount):0),0)}
+function dBalance(id:string){if(customEntryMode&&historicalView?.debtorBalances&&Object.prototype.hasOwnProperty.call(historicalView.debtorBalances,id))return Number(historicalView.debtorBalances[id]||0);return debtorLedger.filter(x=>x.debtor_id===id).reduce((a,x)=>a+(x.type==="credit_purchase"||x.type==="adjustment"?Number(x.amount):x.type==="payment_made"?-Number(x.amount):0),0)}
 function currentSales(){const day=viewingBusinessDate();return viewSales().filter(s=>!s.voided&&transactionBusinessDate(s,s.sold_at)===day)}
 function currentStats(){const day=viewingBusinessDate(),a=currentSales(),r=viewReturns().filter(x=>x.return_type==="sale"&&transactionBusinessDate(x,x.returned_at)===day);const rr=r.reduce((z,x)=>z+Number(x.total_amount||0),0),rp=r.reduce((z,x)=>z+Number(x.profit_impact||0),0),rc=r.reduce((z,x)=>z+Number(x.cash_amount||0),0),ru=r.reduce((z,x)=>z+Number(x.upi_amount||0),0),rcr=r.reduce((z,x)=>z+Number(x.credit_amount||0),0);const cash=a.reduce((x,y)=>x+Number(y.cash_amount||0),0)-rc;const upi=a.reduce((x,y)=>x+Number(y.upi_amount||0),0)-ru;const credit=a.reduce((x,y)=>x+saleCreditAmount(y),0)-rcr;const sales=a.reduce((x,y)=>x+Number(y.total_sale||0),0)-rr;return {tx:new Set(a.map(x=>x.transaction_id||x.id)).size,sales,profit:a.reduce((x,y)=>x+Number(y.gross_profit||0),0)+rp,cash,upi,credit}}
 
@@ -243,7 +243,7 @@ async function loadHistoricalView(date:string){
   const r=await supabase.rpc("get_business_day_view",{p_business_date:date});
   if(r.error)throw r.error;
   const data:any=r.data||{};
-  historicalView={business_date:date,sales:Array.isArray(data.sales)?data.sales:[],purchases:Array.isArray(data.purchases)?data.purchases:[],ledger:Array.isArray(data.credit_ledger)?data.credit_ledger:[],debtorLedger:Array.isArray(data.debtor_ledger)?data.debtor_ledger:[],returns:Array.isArray(data.returns)?data.returns:[],audit:Array.isArray(data.audit)?data.audit:[],summary:data.summary&&Object.keys(data.summary).length?data.summary:null};
+  historicalView={business_date:date,sales:Array.isArray(data.sales)?data.sales:[],purchases:Array.isArray(data.purchases)?data.purchases:[],ledger:Array.isArray(data.credit_ledger)?data.credit_ledger:[],debtorLedger:Array.isArray(data.debtor_ledger)?data.debtor_ledger:[],returns:Array.isArray(data.returns)?data.returns:[],audit:Array.isArray(data.audit)?data.audit:[],summary:data.summary&&Object.keys(data.summary).length?data.summary:null,creditBalances:data.credit_balances&&typeof data.credit_balances==="object"?data.credit_balances:{},debtorBalances:data.debtor_balances&&typeof data.debtor_balances==="object"?data.debtor_balances:{}};
   reportLookup=historicalView.summary;reportLookupDate=date;
   return true;
  }catch(err){historicalView=null;notify("Could not load the selected business day: "+errorMessage(err),"error");return false}
