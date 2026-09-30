@@ -3098,3 +3098,91 @@ input[type="number"]::-webkit-outer-spin-button{
   background:var(--surface)!important;
   border-color:var(--border)!important;
 }
+
+
+/* ============================================================
+   FINAL PINK-THEME TEXT CONTRAST PASS
+   Some legacy components set white text directly, which becomes
+   unreadable on the Light Pink/Pink card surfaces.  Override
+   those text colors here, late in the stylesheet, so this applies
+   consistently across every screen without changing the current
+   dark theme or white text on colored action buttons/icons.
+   ============================================================ */
+:root[data-theme="light-pink"] .dashboard-metrics .metric b,
+:root[data-theme="pink"] .dashboard-metrics .metric b,
+:root[data-theme="light-pink"] .dashboard-metrics .metric-value,
+:root[data-theme="pink"] .dashboard-metrics .metric-value{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .dashboard-metrics .metric span,
+:root[data-theme="pink"] .dashboard-metrics .metric span{
+  color:var(--muted)!important;
+}
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(4),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(4),
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(3),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(3){
+  color:var(--text-soft)!important;
+}
+:root[data-theme="light-pink"] .recent-activity-main b,
+:root[data-theme="pink"] .recent-activity-main b,
+:root[data-theme="light-pink"] .recent-activity-total b,
+:root[data-theme="pink"] .recent-activity-total b{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .recent-activity-main small,
+:root[data-theme="pink"] .recent-activity-main small,
+:root[data-theme="light-pink"] .recent-activity-total small,
+:root[data-theme="pink"] .recent-activity-total small{
+  color:var(--muted)!important;
+}
+:root[data-theme="light-pink"] .home-search-result b,
+:root[data-theme="pink"] .home-search-result b{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .home-search-result small,
+:root[data-theme="pink"] .home-search-result small{
+  color:var(--muted)!important;
+}
+:root[data-theme="light-pink"] .page-head h2,
+:root[data-theme="pink"] .page-head h2,
+:root[data-theme="light-pink"] .section-head h3,
+:root[data-theme="pink"] .section-head h3,
+:root[data-theme="light-pink"] .panel h3,
+:root[data-theme="pink"] .panel h3{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .form-grid label,
+:root[data-theme="pink"] .form-grid label{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .table-wrap td strong,
+:root[data-theme="pink"] .table-wrap td strong,
+:root[data-theme="light-pink"] .table-wrap td b,
+:root[data-theme="pink"] .table-wrap td b{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .table-wrap td,
+:root[data-theme="pink"] .table-wrap td{
+  color:var(--text-soft)!important;
+}
+:root[data-theme="light-pink"] .notice b,
+:root[data-theme="pink"] .notice b,
+:root[data-theme="light-pink"] .badge,
+:root[data-theme="pink"] .badge{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] input,
+:root[data-theme="pink"] input,
+:root[data-theme="light-pink"] textarea,
+:root[data-theme="pink"] textarea,
+:root[data-theme="light-pink"] select,
+:root[data-theme="pink"] select{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] input::placeholder,
+:root[data-theme="pink"] input::placeholder,
+:root[data-theme="light-pink"] textarea::placeholder,
+:root[data-theme="pink"] textarea::placeholder{
+  color:var(--muted-2)!important;
+}
