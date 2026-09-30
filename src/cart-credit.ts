@@ -54,9 +54,9 @@ export function createCartCreditFeature(ctx: FeatureContext) {
         </tbody></table></div>
         <form id="cartPaymentForm" class="form-grid">
           <label>Payment<select name="payment_mode"><option value="cash">Cash</option><option value="upi">UPI</option><option value="split">Cash + UPI</option><option value="credit">Credit</option><option value="credit_split">Credit + Cash + UPI</option></select></label>
-          <label id="cartCashWrap" class="hidden">Cash amount<input name="cash_amount" type="number" min="0" step="0.01" value="0"></label>
-          <label id="cartUpiWrap" class="hidden">UPI amount<input name="upi_amount" type="number" min="0" step="0.01" value="0"></label>
-          <label id="cartCreditWrap" class="hidden">Credit amount<input name="credit_amount" type="number" min="0" step="0.01" value="0"></label>
+          <label id="cartCashWrap" class="hidden">Cash amount<input name="cash_amount" type="number" min="0" step="any" value="0"></label>
+          <label id="cartUpiWrap" class="hidden">UPI amount<input name="upi_amount" type="number" min="0" step="any" value="0"></label>
+          <label id="cartCreditWrap" class="hidden">Credit amount<input name="credit_amount" type="number" min="0" step="any" value="0"></label>
           <label id="cartCreditorWrap" class="hidden">Creditor<select name="creditor_id"><option value="">Select creditor</option>
             ${creditors.map(x=>`<option value="${x.id}">${ctx.escapeHtml(x.name)} — ${ctx.escapeHtml(x.mobile)} (Balance ${ctx.money(creditorBalance(x.id))})</option>`).join("")}
           </select><button id="newCartCreditorBtn" type="button" class="ghost">+ New Creditor</button></label>
@@ -69,9 +69,9 @@ export function createCartCreditFeature(ctx: FeatureContext) {
       <form id="cartAddForm" class="form-grid">
         <label>Search product<input id="cartProductSearch" type="search" placeholder="Search by product name..."></label>
         <label>Product<select id="cartProductSelect" name="product_id" required>${products.map(p=>`<option value="${p.id}">${ctx.escapeHtml(p.name)} — ${ctx.escapeHtml(String(p.current_stock_base))} available</option>`).join("")}</select></label>
-        <label>Quantity<input name="quantity" type="number" min="0.001" step="0.001" required></label>
+        <label>Quantity<input name="quantity" type="number" min="0" step="0.001" required></label>
         <label>Sold in<select name="sold_unit"></select></label>
-        <label>Selling price<input name="price" type="number" min="0" step="0.01" required></label>
+        <label>Selling price<input name="price" type="number" min="0" step="any" required></label>
         <div class="full"><button class="primary" type="submit">Add</button><button id="cartDoneBtn" type="button" class="ghost">Done</button></div>
       </form>
       <div class="section-head"><h3>Cart Items</h3><span class="muted">Unlimited items</span></div>
@@ -258,7 +258,7 @@ export function createCartCreditFeature(ctx: FeatureContext) {
     if(form&&supabase&&profile) {
       const select=form.elements.namedItem("product_id") as HTMLSelectElement,search=document.querySelector<HTMLInputElement>("#cartProductSearch");
       const qty=form.elements.namedItem("quantity") as HTMLInputElement,unit=form.elements.namedItem("sold_unit") as HTMLSelectElement,price=form.elements.namedItem("price") as HTMLInputElement;
-      const update=()=>{const p=product(select.value);if(!p)return;unit.innerHTML=p.unit_type==="piece"?'<option value="piece">pieces</option>':'<option value="grams">grams</option><option value="kg">kg</option>';unit.value=p.unit_type==="piece"?"piece":"grams";qty.min=p.unit_type==="piece"?"1":"0.001";qty.step=p.unit_type==="piece"?"1":"0.001";price.value=String(Number(p.selling_price_per_base_unit));price.readOnly=profile.role==="worker"&&settings.workers_can_modify_selling_price!==true;};
+      const update=()=>{const p=product(select.value);if(!p)return;unit.innerHTML=p.unit_type==="piece"?'<option value="piece">pieces</option>':'<option value="grams">grams</option><option value="kg">kg</option>';unit.value=p.unit_type==="piece"?"piece":"grams";qty.min="0";qty.step="any";price.value=String(Number(p.selling_price_per_base_unit));price.readOnly=profile.role==="worker"&&settings.workers_can_modify_selling_price!==true;};
       search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();[...select.options].forEach(o=>o.hidden=!o.textContent!.toLowerCase().includes(q));});
       select.addEventListener("change",update);update();
       form.addEventListener("submit",e=>{e.preventDefault();const p=product(select.value);if(!p)return;const display=Number(qty.value),soldUnit=String(unit.value),base=p.unit_type==="piece"?display:soldUnit==="kg"?display*1000:display,sell=Number(price.value);if(!Number.isFinite(display)||display<=0||base>Number(p.current_stock_base))return ctx.notify("Invalid quantity or insufficient stock.","error");if(p.unit_type==="piece"&&!Number.isInteger(display))return ctx.notify("Piece products must be whole numbers.","error");if(!Number.isFinite(sell)||sell<0)return ctx.notify("Enter a valid selling price.","error");if(profile.role==="worker"&&settings.workers_can_modify_selling_price!==true&&Math.abs(sell-Number(p.selling_price_per_base_unit))>0.000001)return ctx.notify("Workers are not allowed to modify the selling price.","error");if(cartItems.some(x=>x.product_id===p.id))return ctx.notify("This product is already in the cart. Edit the existing row instead.","info");cartItems.push({product_id:p.id,quantity_base:base,quantity_display:display,sold_unit:soldUnit,selling_price_per_base_unit:sell});ctx.renderDashboard();(document.querySelector('[data-tab="cart"]') as HTMLElement | null)?.click();});
