@@ -940,6 +940,7 @@ function bindQuantitySteppers(){
    b.setAttribute("aria-label",direction<0?"Decrease quantity":"Increase quantity");
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
    b.addEventListener("click",()=>{
+    if(input.readOnly||input.disabled)return;
     const step=1;
     const minAttr=Number(input.min),maxAttr=Number(input.max);
     const min=Number.isFinite(minAttr)?minAttr:-Infinity;
