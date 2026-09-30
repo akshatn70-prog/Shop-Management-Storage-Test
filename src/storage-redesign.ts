@@ -929,35 +929,40 @@ let quantityStepperObserver:MutationObserver|null=null;
 function bindQuantitySteppers(){
  const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"]'));
  inputs.forEach(input=>{
-  if(input.closest(".qty-stepper"))return;
+  if(input.closest(".qty-stepper")||input.dataset.qtyStepperBound==="true")return;
+  const parent=input.parentElement;
+  if(!parent)return;
   const wrap=document.createElement("div");
   wrap.className="qty-stepper";
-  input.parentElement?.insertBefore(wrap,input);
+  input.dataset.qtyStepperBound="true";
+  parent.insertBefore(wrap,input);
   wrap.appendChild(input);
   const make=(direction:-1|1)=>{
    const b=document.createElement("button");
    b.type="button";
    b.className=direction<0?"qty-stepper-btn qty-minus":"qty-stepper-btn qty-plus";
    b.setAttribute("aria-label",direction<0?"Decrease by 1":"Increase by 1");
+   b.dataset.qtyStepperFor=input.name||input.id||"number";
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
-   b.addEventListener("click",()=>{
+   b.addEventListener("click",(event)=>{
+    event.preventDefault();
+    event.stopPropagation();
     if(input.readOnly||input.disabled)return;
+    const currentText=input.value.trim();
+    const current=Number(currentText);
+    const currentValue=Number.isFinite(current)?current:0;
     const minAttr=Number(input.min);
     const maxAttr=Number(input.max);
     const min=Number.isFinite(minAttr)?minAttr:-Infinity;
     const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
-    const currentText=input.value.trim();
-    let value=currentText===""?0:Number(currentText);
-    if(!Number.isFinite(value))value=0;
-    value+=direction;
-    value=Math.max(min,Math.min(max,value));
-    const stepText=String(input.step||"");
-    const currentDecimals=(currentText.split(".")[1]||"").length;
-    const stepDecimals=(stepText.split(".")[1]||"").length;
-    const decimals=Math.max(currentDecimals,stepDecimals);
-    input.value=decimals?value.toFixed(decimals):String(value);
+    // The control changes the EXISTING value by exactly one unit.
+    // It never uses min as the new value, so 1 + = 2 and 1 - = 0.
+    let next=currentValue+direction;
+    if(next<min)next=min;
+    if(next>max)next=max;
+    const decimals=(currentText.split(".")[1]||"").length;
+    input.value=decimals?next.toFixed(decimals):String(next);
     input.dispatchEvent(new Event("input",{bubbles:true}));
-    input.dispatchEvent(new Event("change",{bubbles:true}));
    });
    return b;
   };
