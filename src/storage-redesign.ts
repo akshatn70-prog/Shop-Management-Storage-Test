@@ -1015,17 +1015,26 @@ function bindQuantitySteppers(){
    b.tabIndex=-1;
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
 
-   // Handle the button itself. Do not let the click bubble into a form or
-   // another generic button handler that could submit/reset the form.
+   // Handle pointer presses directly so mouse/touch cannot submit or reset
+   // the surrounding form. The following click is ignored so one press = one step.
+   let pointerHandled=false;
    b.addEventListener("pointerdown",(event)=>{
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if((event as PointerEvent).button!==0)return;
+    pointerHandled=true;
+    changeQuantityByOne(input,direction);
+    window.setTimeout(()=>{pointerHandled=false},500);
    },true);
    b.addEventListener("click",(event)=>{
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    if(pointerHandled){
+     pointerHandled=false;
+     return;
+    }
     changeQuantityByOne(input,direction);
    },true);
    return b;
