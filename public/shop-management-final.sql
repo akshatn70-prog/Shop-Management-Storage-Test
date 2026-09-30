@@ -454,14 +454,14 @@ using (bucket_id='product-photos' and (select public.is_active_user()));
 
 create or replace function public.set_product_photo(p_product_id uuid,p_photo_path text)
 returns void language plpgsql security definer set search_path=''
-as $
+as $$
 begin
   if not (select public.is_active_user()) then raise exception 'Account is inactive'; end if;
   if p_photo_path is not null and p_photo_path not like 'products/'||p_product_id::text||'/%' then raise exception 'Invalid product photo path'; end if;
   update public.products set photo_path=p_photo_path,updated_at=now() where id=p_product_id and is_active=true;
   if not found then raise exception 'Product not found or inactive'; end if;
 end;
-$;
+$$;
 revoke all on function public.set_product_photo(uuid,text) from public,anon;
 grant execute on function public.set_product_photo(uuid,text) to authenticated;
 
