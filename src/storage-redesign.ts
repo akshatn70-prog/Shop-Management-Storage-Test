@@ -925,6 +925,7 @@ function returnForm(type:"purchase"|"sale"){
  const calc=()=>{const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")||0),price=Number(fd.get("price")||0),unit=String(fd.get("unit")),base=p?.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty,total=p?saleTotal(p,base,price):0;if(p)preview.textContent="Return amount: "+money(total)+" • Stock will "+(sale?"increase":"decrease")+" by "+base+(p.unit_type==="weight"?" g":" pcs")};f.addEventListener("input",calc); document.querySelector<HTMLSelectElement>('#returnFormInner select[name="product"]')?.addEventListener("change",()=>{syncPriceLabel();calc()}); syncPriceLabel();
  f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:saleTotal(p,base,price),payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render();notify("Return recorded.","success")});calc();
 }
+let quantityStepperObserver:MutationObserver|null=null;
 function bindQuantitySteppers(){
  const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="qty"],input[type="number"][name="quantity"],input[type="number"][name="price"],input[type="number"][name="selling"],input[type="number"][name="purchase"],input[type="number"][name="sale"],input[type="number"][name="low"]'));
  inputs.forEach(input=>{
@@ -937,20 +938,24 @@ function bindQuantitySteppers(){
    const b=document.createElement("button");
    b.type="button";
    b.className=direction<0?"qty-stepper-btn qty-minus":"qty-stepper-btn qty-plus";
-   b.setAttribute("aria-label",direction<0?"Decrease quantity":"Increase quantity");
+   b.setAttribute("aria-label",direction<0?"Decrease by 1":"Increase by 1");
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
    b.addEventListener("click",()=>{
     if(input.readOnly||input.disabled)return;
-    const step=1;
-    const minAttr=0,maxAttr=Number(input.max);
+    const minAttr=Number(input.min);
+    const maxAttr=Number(input.max);
     const min=Number.isFinite(minAttr)?minAttr:-Infinity;
     const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
-    let value=Number(input.value);
-    if(!Number.isFinite(value))value=Number.isFinite(min)?min:0;
-    value+=direction*step;
+    const currentText=input.value.trim();
+    let value=currentText===""?0:Number(currentText);
+    if(!Number.isFinite(value))value=0;
+    value+=direction;
     value=Math.max(min,Math.min(max,value));
-    const decimals=0;
-    input.value=decimals?value.toFixed(decimals):String(Math.round(value));
+    const stepText=String(input.step||"");
+    const currentDecimals=(currentText.split(".")[1]||"").length;
+    const stepDecimals=(stepText.split(".")[1]||"").length;
+    const decimals=Math.max(currentDecimals,stepDecimals);
+    input.value=decimals?value.toFixed(decimals):String(value);
     input.dispatchEvent(new Event("input",{bubbles:true}));
     input.dispatchEvent(new Event("change",{bubbles:true}));
    });
@@ -960,6 +965,17 @@ function bindQuantitySteppers(){
   wrap.insertBefore(minus,input);
   wrap.appendChild(plus);
  });
+}
+function ensureQuantityStepperObserver(){
+ if(quantityStepperObserver||!app)return;
+ quantityStepperObserver=new MutationObserver(mutations=>{
+  const hasNewInput=mutations.some(m=>Array.from(m.addedNodes).some(node=>{
+   if(!(node instanceof HTMLElement))return false;
+   return node.matches('input[type="number"]')||!!node.querySelector('input[type="number"]');
+  }));
+  if(hasNewInput)bindQuantitySteppers();
+ });
+ quantityStepperObserver.observe(app,{childList:true,subtree:true});
 }
 function fitDashboardMetricValues(){
  const values=document.querySelectorAll<HTMLElement>(".dashboard-metrics .metric-value,.today-page .metric-value");
@@ -1007,6 +1023,7 @@ function bindHomeSearch(){
 }
 function bind(){
  bindQuantitySteppers();
+ ensureQuantityStepperObserver();
  if(activeTab==="dashboard")bindHomeSearch();
  if(activeTab==="dashboard")bindDashboardMetricSummaries();
  document.querySelector("#showAllStock")?.addEventListener("click",()=>{lowStockOnly=false;render()});
@@ -1069,6 +1086,7 @@ function bind(){
  bindStockActions();
 }
  if(activeTab==="settings")bindSettings();
+ bindQuantitySteppers();
 }
 function addSwipeHints(){
  /* Horizontal areas use native touch/trackpad scrolling and the shared scrollbar styling. */
