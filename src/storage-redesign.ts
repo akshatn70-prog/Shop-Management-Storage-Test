@@ -30,6 +30,7 @@ const viewDebtorLedger=()=>historicalView?.debtorLedger??debtorLedger;
 const viewReturns=()=>historicalView?.returns??returnsRows;
 const viewAudit=()=>historicalView?.audit??auditRows;
 let bottomNavScrollLeft=0, reportTableScrollLeft=0, dashboardSummaryKind="";
+let openDebtorHistoryId="",openCreditorHistoryId="";
 const horizontalScrollPositions=new Map<string,number>();
 const horizontalScrollKey=(el:HTMLElement,index:number)=>activeTab+"|"+el.className+"|"+index;
 const captureHorizontalScroll=()=>{
@@ -821,7 +822,15 @@ function bindDebtors(){
  document.querySelector("#debtorSearch")?.addEventListener("input",e=>{const q=(e.target as HTMLInputElement).value.toLowerCase();document.querySelectorAll<HTMLElement>(".debtor-row").forEach(x=>x.style.display=(x.dataset.q||"").includes(q)?"":"none")});
  document.querySelector("#newDebtor")?.addEventListener("click",async()=>{const n=prompt("Debtor name"),mbl=prompt("Mobile");if(!n?.trim()||!mbl?.trim())return;try{await createDebtor(n.trim(),mbl.trim());await loadData();render();notify("Debtor added.","success")}catch(err){notify(errorMessage(err),"error")}});
  document.querySelectorAll<HTMLButtonElement>(".pay-debtor").forEach(b=>b.addEventListener("click",async()=>{const id=b.dataset.id!,bal=dBalance(id),amount=Number(prompt("Payment amount. Outstanding: "+money(bal)));if(!amount||amount<=0||amount>bal+0.01)return notify("Enter an amount up to the outstanding balance.","error");const mode=(prompt("Payment mode: cash, upi, split","cash")||"cash").toLowerCase();let cash=0,upi=0;if(mode==="cash")cash=amount;else if(mode==="upi")upi=amount;else if(mode==="split"){cash=Number(prompt("Cash amount","0"));if(cash<0||cash>amount)return notify("Invalid cash amount.","error");upi=amount-cash}else return notify("Invalid payment mode.","error");try{if(demo){debtorLedger.unshift({id:"dpay-"+Date.now(),debtor_id:id,type:"payment_made",amount,payment_mode:mode,cash_amount:cash,upi_amount:upi,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});let rem=amount;for(const p of purchases.filter(x=>x.debtor_id===id&&Number(x.credit_amount||0)>Number(x.credit_paid||0)).sort((a,b)=>new Date(a.purchased_at).getTime()-new Date(b.purchased_at).getTime())){const take=Math.min(rem,Number(p.credit_amount||0)-Number(p.credit_paid||0));p.credit_paid=Number(p.credit_paid||0)+take;rem-=take;if(rem<=.01)break}}else{const r=await transactionRpc("pay_debtor",{p_debtor_id:id,p_amount:amount,p_payment_mode:mode,p_cash_amount:cash,p_upi_amount:upi});if(r.error)throw r.error}await loadData();render();notify("Debtor payment recorded.","success")}catch(err){notify(errorMessage(err),"error")}}));
- document.querySelectorAll<HTMLButtonElement>(".debtor-history").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.id!,d=debtors.find(x=>x.id===id),rows=viewDebtorLedger().filter(x=>x.debtor_id===id);document.querySelector("#debtorDetail")!.innerHTML='<div class="panel"><div class="section-head"><h3>'+esc(d?.name)+' · '+money(dBalance(id))+' outstanding</h3><button id="closeDebtor" class="ghost">Close</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cash</th><th>UPI</th><th>By</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.type)+'</td><td>'+money(x.amount)+'</td><td>'+money(x.cash_amount)+'</td><td>'+money(x.upi_amount)+'</td><td>'+esc(x.profiles?.full_name||"")+'</td></tr>').join("")+'</tbody></table></div></div>';document.querySelector("#closeDebtor")?.addEventListener("click",()=>document.querySelector("#debtorDetail")!.innerHTML="")}));
+ const showDebtorHistory=(id:string)=>{
+  openDebtorHistoryId=id;
+  const d=debtors.find(x=>x.id===id),rows=viewDebtorLedger().filter(x=>x.debtor_id===id),host=document.querySelector("#debtorDetail");
+  if(!host)return;
+  host.innerHTML='<div class="panel"><div class="section-head"><h3>'+esc(d?.name)+' · '+money(dBalance(id))+' outstanding</h3><button id="closeDebtor" class="ghost">Close</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cash</th><th>UPI</th><th>By</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.type)+'</td><td>'+money(x.amount)+'</td><td>'+money(x.cash_amount)+'</td><td>'+money(x.upi_amount)+'</td><td>'+esc(x.profiles?.full_name||"")+'</td></tr>').join("")+'</tbody></table></div></div>';
+  document.querySelector("#closeDebtor")?.addEventListener("click",()=>{openDebtorHistoryId="";host.innerHTML=""});
+ };
+ document.querySelectorAll<HTMLButtonElement>(".debtor-history").forEach(b=>b.addEventListener("click",()=>showDebtorHistory(b.dataset.id!)));
+ if(openDebtorHistoryId)showDebtorHistory(openDebtorHistoryId);
 }
 
 function creditorsView(){
@@ -851,11 +860,15 @@ function bindCreditors(){
    await loadData();render();notify("Credit payment recorded.","success");
   }catch(err){notify(errorMessage(err),"error")}
  }));
- document.querySelectorAll<HTMLButtonElement>(".credit-history").forEach(b=>b.addEventListener("click",()=>{
-  const id=b.dataset.id!,c=creditors.find(x=>x.id===id),rows=viewLedger().filter(x=>x.creditor_id===id);
-  document.querySelector("#creditDetail")!.innerHTML='<div class="panel"><div class="section-head"><h3>'+esc(c?.name)+' · '+money(qBalance(id))+' outstanding</h3><button id="closeCredit" class="ghost">Close</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cash</th><th>UPI</th><th>By</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.type)+'</td><td>'+money(x.amount)+'</td><td>'+money(x.cash_amount)+'</td><td>'+money(x.upi_amount)+'</td><td>'+esc(x.profiles?.full_name||"")+'</td></tr>').join("")+'</tbody></table></div></div>';
-  document.querySelector("#closeCredit")?.addEventListener("click",()=>document.querySelector("#creditDetail")!.innerHTML="");
- }));
+ const showCreditorHistory=(id:string)=>{
+  openCreditorHistoryId=id;
+  const c=creditors.find(x=>x.id===id),rows=viewLedger().filter(x=>x.creditor_id===id),host=document.querySelector("#creditDetail");
+  if(!host)return;
+  host.innerHTML='<div class="panel"><div class="section-head"><h3>'+esc(c?.name)+' · '+money(qBalance(id))+' outstanding</h3><button id="closeCredit" class="ghost">Close</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cash</th><th>UPI</th><th>By</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+fmt(x.created_at)+'</td><td>'+esc(x.type)+'</td><td>'+money(x.amount)+'</td><td>'+money(x.cash_amount)+'</td><td>'+money(x.upi_amount)+'</td><td>'+esc(x.profiles?.full_name||"")+'</td></tr>').join("")+'</tbody></table></div></div>';
+  document.querySelector("#closeCredit")?.addEventListener("click",()=>{openCreditorHistoryId="";host.innerHTML=""});
+ };
+ document.querySelectorAll<HTMLButtonElement>(".credit-history").forEach(b=>b.addEventListener("click",()=>showCreditorHistory(b.dataset.id!)));
+ if(openCreditorHistoryId)showCreditorHistory(openCreditorHistoryId);
 }
 
 function historyTable(){
