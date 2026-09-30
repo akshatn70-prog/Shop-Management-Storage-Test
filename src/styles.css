@@ -2559,3 +2559,86 @@ input[type="number"]::-webkit-outer-spin-button{
 :root[data-theme="pink"] .dashboard-summary-row span{
   color:var(--text-soft);
 }
+
+
+/* Light-theme cleanup for legacy hard-coded dark component styles. */
+:root[data-theme="light-pink"] .dashboard-metrics .metric,
+:root[data-theme="pink"] .dashboard-metrics .metric,
+:root[data-theme="light-pink"] .quick-action,
+:root[data-theme="pink"] .quick-action,
+:root[data-theme="light-pink"] .more-menu-item,
+:root[data-theme="pink"] .more-menu-item,
+:root[data-theme="light-pink"] .home-search-result,
+:root[data-theme="pink"] .home-search-result,
+:root[data-theme="light-pink"] .recent-panel,
+:root[data-theme="pink"] .recent-panel,
+:root[data-theme="light-pink"] .modal-card,
+:root[data-theme="pink"] .modal-card{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(1),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(1){background:linear-gradient(145deg,#fff,#fff3f8)!important}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(2),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(2){background:linear-gradient(145deg,#fff,#f5fff9)!important}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(3),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(3){background:linear-gradient(145deg,#fff,#f4f9ff)!important}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(4),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(4){background:linear-gradient(145deg,#fff,#faf5ff)!important}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(5),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(5){background:linear-gradient(145deg,#fff,#fff5f5)!important}
+:root[data-theme="light-pink"] .dashboard-metrics .metric:nth-child(6),
+:root[data-theme="pink"] .dashboard-metrics .metric:nth-child(6){background:linear-gradient(145deg,#fff,#fff9ed)!important}
+:root[data-theme="light-pink"] .quick-sale,
+:root[data-theme="light-pink"] .quick-purchase,
+:root[data-theme="light-pink"] .quick-product,
+:root[data-theme="light-pink"] .quick-stock,
+:root[data-theme="pink"] .quick-sale,
+:root[data-theme="pink"] .quick-purchase,
+:root[data-theme="pink"] .quick-product,
+:root[data-theme="pink"] .quick-stock{
+  background:linear-gradient(135deg,var(--surface-2),var(--surface-3))!important;
+  border-color:var(--border)!important;
+  color:var(--text)!important;
+  box-shadow:var(--shadow-soft);
+}
+:root[data-theme="light-pink"] .quick-action b,
+:root[data-theme="pink"] .quick-action b,
+:root[data-theme="light-pink"] .quick-action .ui-icon,
+:root[data-theme="pink"] .quick-action .ui-icon{
+  color:var(--accent)!important;
+}
+:root[data-theme="light-pink"] .more-sheet,
+:root[data-theme="pink"] .more-sheet,
+:root[data-theme="light-pink"] .more-menu,
+:root[data-theme="pink"] .more-menu,
+:root[data-theme="light-pink"] .stock-page .table-wrap,
+:root[data-theme="pink"] .stock-page .table-wrap,
+:root[data-theme="light-pink"] .table-wrap,
+:root[data-theme="pink"] .table-wrap{
+  background:var(--surface)!important;
+  border-color:var(--border)!important;
+}
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(1),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(1),
+:root[data-theme="light-pink"] .stock-page .table-wrap td:nth-child(4),
+:root[data-theme="pink"] .stock-page .table-wrap td:nth-child(4),
+:root[data-theme="light-pink"] td,
+:root[data-theme="pink"] td{
+  color:var(--text)!important;
+}
+:root[data-theme="light-pink"] th,
+:root[data-theme="pink"] th,
+:root[data-theme="light-pink"] .section-head,
+:root[data-theme="pink"] .section-head{
+  color:var(--text);
+}
+:root[data-theme="light-pink"] .home-search-result small,
+:root[data-theme="pink"] .home-search-result small,
+:root[data-theme="light-pink"] .more-menu-item small,
+:root[data-theme="pink"] .more-menu-item small,
+:root[data-theme="light-pink"] .more-menu-item .chevron,
+:root[data-theme="pink"] .more-menu-item .chevron{
+  color:var(--muted)!important;
+}
