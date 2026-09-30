@@ -127,12 +127,25 @@ const verifyAndUpdateDatabase=async()=>{
  return data;
 };
 const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return true}return false};
+const refreshAfterDatabaseChange=async()=>{
+ await loadData();
+ if(customEntryMode&&customEntryDate)await loadHistoricalView(customEntryDate);
+ if(reportDate)await loadReportDate(reportDate);
+ render();
+};
 const transactionRpc=async(name:string,args:Record<string,any>)=>{
  if(!supabase)throw new Error("Supabase is not connected.");
- if(!customEntryMode)return await supabase.rpc(name,args);
- if(profile?.role!=="owner")throw new Error("Owner access is required for Custom Entry.");
- if(!customEntryDate)throw new Error("Choose the business date for this Custom Entry.");
- return await supabase.rpc("record_custom_entry",{p_kind:name,p_business_date:customEntryDate,p_payload:args});
+ let result:any;
+ if(!customEntryMode){
+  result=await supabase.rpc(name,args);
+ }else{
+  if(profile?.role!=="owner")throw new Error("Owner access is required for Custom Entry.");
+  if(!customEntryDate)throw new Error("Choose the business date for this Custom Entry.");
+  result=await supabase.rpc("record_custom_entry",{p_kind:name,p_business_date:customEntryDate,p_payload:args});
+ }
+ if(result.error)throw result.error;
+ await refreshAfterDatabaseChange();
+ return result;
 };
 const daysAgo=(n:number,h=12)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,15,0,0);return d.toISOString()};
 
@@ -253,24 +266,33 @@ async function setupRealtime(){
  if(demo||!supabase||!profile)return;
  if(realtimeChannel)await supabase.removeChannel(realtimeChannel);
  if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}
- const tables=["sales","inventory_purchases","credit_ledger","debtor_ledger","returns","products","daily_financial_summaries","lifetime_financial_summaries"];
+ const tables=[
+  "sales","sale_transactions","inventory_purchases","returns",
+  "credit_ledger","debtor_ledger","creditors","debtors",
+  "products","profiles","audit_logs","shop_settings",
+  "daily_financial_summaries","lifetime_financial_summaries"
+ ];
+ let refreshQueued=false;
+ const queueRefresh=()=>{
+  if(refreshQueued)return;
+  refreshQueued=true;
+  window.setTimeout(async()=>{
+   refreshQueued=false;
+   if(!profile||demo||!supabase)return;
+   try{await refreshAfterDatabaseChange()}catch(err){console.warn("Live refresh failed",err)}
+  },120);
+ };
  realtimeChannel=supabase.channel("shop-management-live-"+profile.id);
  for(const table of tables){
-  realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},async()=>{
-   await loadData();
-   if(activeTab==="reports"&&reportDate)await loadReportDate(reportDate);
-   if(activeTab==="today"||activeTab==="reports"||activeTab==="dashboard")render();
-  });
+  realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},()=>queueRefresh());
  }
- realtimeChannel.subscribe();
+ realtimeChannel.subscribe((status)=>{
+  if(status!=="SUBSCRIBED")console.warn("Shop Management realtime status:",status);
+ });
  realtimeRefreshTimer=window.setInterval(async()=>{
   if(!profile||demo||!supabase)return;
-  if(activeTab==="today"||activeTab==="reports"){
-   await loadData();
-   if(activeTab==="reports"&&reportDate)await loadReportDate(reportDate);
-   render();
-  }
- },5000);
+  try{await refreshAfterDatabaseChange()}catch(err){console.warn("Live fallback refresh failed",err)}
+ },customEntryMode?2000:5000);
 }
 
 function shell(title:string){
@@ -421,15 +443,21 @@ function customEntryView(){
  const icon=(name:string)=>'<span class="ui-icon ui-icon-'+name+'" aria-hidden="true"></span>';
  return '<section class="page custom-entry-page"><div class="page-head"><div><h2>Custom Entry</h2><p class="muted">Select a transaction. The existing checks for stock, balances, permissions, and totals still apply.</p></div></div><div class="panel notice warning"><b>Historical entry</b><br>Stock changes now; reports and transaction history use the business date selected above. Make sure this is the transaction that was missed.</div><div class="panel more-page-menu"><div class="more-menu">'+items.map(x=>'<button type="button" data-nav="'+x[0]+'" class="more-menu-item">'+icon(x[2])+'<span><b>'+esc(x[1])+'</b><small>'+esc(x[3])+'</small></span><span class="chevron">›</span></button>').join("")+'</div></div></section>';
 }
+const transactionProductName=(row:any)=>{
+ const snapshot=String(row?.product_name_snapshot||"").trim();
+ if(snapshot&&snapshot.toLowerCase()!=="deleted product")return snapshot;
+ const joined=String(row?.products?.name||"").trim();
+ if(joined)return joined;
+ const current=row?.product_id?products.find(p=>p.id===row.product_id)?.name:"";
+ return current||"Product unavailable";
+};
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+viewLedger().filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
  const activity:{type:string;title:string;subtitle:string;amount:number;date:any;mode?:string;product_id?:string}[]=[];
  const activityProductName=(row:any)=>{
   const id=row.product_id||row.products?.id;
-  const current=id?products.find(p=>p.id===id)?.name:"";
-  const snapshot=String(row.product_name_snapshot||"").trim();
-  return snapshot&&snapshot.toLowerCase()!=="deleted product" ? snapshot : (current||String(row.products?.name||"Product unavailable"));
+  return transactionProductName(row);
  };
  viewSales().filter(x=>!x.voided).forEach(x=>activity.push({type:"Sale",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Sale · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_sale||0),date:x.sold_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
  viewPurchases().filter(x=>!x.pre_stock).forEach(x=>activity.push({type:"Purchase",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Purchase · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_cost||0),date:x.purchased_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
@@ -824,8 +852,8 @@ function historyTable(){
  const start=historyRange==="7"?Date.now()-7*864e5:historyRange==="30"?Date.now()-30*864e5:0;
  const d=historyRange==="date"?historyDate:"";
  const rows=historyType==="sales"?viewSales().filter(s=>!s.voided&&(!start||new Date(s.sold_at).getTime()>=start)&&(!d||localDate(new Date(s.sold_at))===d)):viewPurchases().filter(p=>!p.pre_stock&&(!start||new Date(p.purchased_at).getTime()>=start)&&(!d||localDate(new Date(p.purchased_at))===d));
-  if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc((s.product_name_snapshot&&s.product_name_snapshot!=="Deleted product")?s.product_name_snapshot:(s.products?.name||"Product unavailable"))+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(saleCreditAmount(s))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
- return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Cost</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Supplier</th><th></th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+fmt(p.purchased_at)+'</td><td>'+esc(p.product_name_snapshot)+'</td><td>'+p.quantity_display+' '+esc(p.purchase_unit||"")+'</td><td>'+money(p.total_cost)+'</td><td>'+money(p.cash_amount)+'</td><td>'+money(p.upi_amount)+'</td><td>'+money(Math.max(0,Number(p.credit_amount||0)-Number(p.credit_paid||0)))+'</td><td>'+esc(p.supplier_name||"")+'</td><td>'+(Number(p.credit_amount||0)-Number(p.credit_paid||0)>0.01?'<button class="smallbtn pay-purchase" data-id="'+p.id+'">Pay</button>':"")+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="9" class="muted">No retained purchase details.</td></tr>')+'</tbody></table>';
+  if(historyType==="sales")return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Sale</th><th>Profit</th><th>Cash</th><th>UPI</th><th>Credit</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+fmt(s.sold_at)+'</td><td>'+esc(transactionProductName(s))+'</td><td>'+s.quantity_display+' '+esc(s.sold_unit||"")+'</td><td>'+money(s.total_sale)+'</td><td>'+money(s.gross_profit)+'</td><td>'+money(s.cash_amount)+'</td><td>'+money(s.upi_amount)+'</td><td>'+money(saleCreditAmount(s))+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="8" class="muted">No retained sale details.</td></tr>')+'</tbody></table>';
+ return '<table><thead><tr><th>Date</th><th>Product</th><th>Qty</th><th>Cost</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Supplier</th><th></th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+fmt(p.purchased_at)+'</td><td>'+esc(transactionProductName(p))+'</td><td>'+p.quantity_display+' '+esc(p.purchase_unit||"")+'</td><td>'+money(p.total_cost)+'</td><td>'+money(p.cash_amount)+'</td><td>'+money(p.upi_amount)+'</td><td>'+money(Math.max(0,Number(p.credit_amount||0)-Number(p.credit_paid||0)))+'</td><td>'+esc(p.supplier_name||"")+'</td><td>'+(Number(p.credit_amount||0)-Number(p.credit_paid||0)>0.01?'<button class="smallbtn pay-purchase" data-id="'+p.id+'">Pay</button>':"")+'</td></tr>').join("")+(rows.length?"":'<tr><td colspan="9" class="muted">No retained purchase details.</td></tr>')+'</tbody></table>';
 }
 function legacyHistory(){
  const today=viewingBusinessDate();
@@ -1081,7 +1109,7 @@ function bindSettings(){
 
 function returnsView(){
  const owner=profile?.role==="owner";if(!owner)return '<section class="page returns-page"><div class="panel"><h2>Returns</h2><div class="notice danger">Returns are owner-only.</div></div></section>';
- return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary return-purchase-btn" type="button" title="Send purchased stock back to supplier">↩ Purchase Return</button><button id="saleReturnBtn" class="ghost" type="button" title="Return customer sale">↪ Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+viewReturns().slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc((r.product_name_snapshot&&r.product_name_snapshot!=="Deleted product")?r.product_name_snapshot:(r.products?.name||"Product unavailable"))+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
+ return '<section class="page"><div class="page-head"><div><h2>Returns</h2><p class="muted">Purchase returns send stock back to suppliers. Sale returns add stock back and reverse the financial effect.</p></div></div><div class="quick-grid"><button id="purchaseReturnBtn" class="primary return-purchase-btn" type="button" title="Send purchased stock back to supplier">↩ Purchase Return</button><button id="saleReturnBtn" class="ghost" type="button" title="Return customer sale">↪ Sale Return</button></div><div id="returnForm"></div><div class="panel"><h3>Recent Returns</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>Product</th><th>Qty</th><th>Amount</th><th>Payment</th><th>Date</th></tr></thead><tbody>'+viewReturns().slice(0,50).map(r=>'<tr><td>'+esc(r.return_type)+'</td><td>'+esc(transactionProductName(r))+'</td><td>'+esc(r.quantity_display)+' '+esc(r.return_unit)+'</td><td>'+money(r.total_amount)+'</td><td>'+esc(r.payment_mode)+'</td><td>'+fmt(r.returned_at)+'</td></tr>').join("")+'</tbody></table></div></div></section>';
 }
 function bindReturns(){document.querySelector("#purchaseReturnBtn")?.addEventListener("click",()=>returnForm("purchase"));document.querySelector("#saleReturnBtn")?.addEventListener("click",()=>returnForm("sale"))}
 function returnForm(type:"purchase"|"sale"){
