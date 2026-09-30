@@ -445,6 +445,9 @@ drop policy if exists "product photos update active users" on storage.objects;
 create policy "product photos update active users" on storage.objects for update to authenticated
 using (bucket_id='product-photos' and (select public.is_active_user()))
 with check (bucket_id='product-photos' and (select public.is_active_user()));
+drop policy if exists "product photos read active users" on storage.objects;
+create policy "product photos read active users" on storage.objects for select to authenticated
+using (bucket_id='product-photos' and (select public.is_active_user()));
 drop policy if exists "product photos delete active users" on storage.objects;
 create policy "product photos delete active users" on storage.objects for delete to authenticated
 using (bucket_id='product-photos' and (select public.is_active_user()));
