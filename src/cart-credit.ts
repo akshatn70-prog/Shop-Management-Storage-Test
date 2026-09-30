@@ -226,24 +226,44 @@ export function createCartCreditFeature(ctx: FeatureContext) {
         b.setAttribute("aria-label",direction<0?"Decrease by 1":"Increase by 1");
         b.dataset.qtyStepperFor=input.name||input.id||"number";
         b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
+        b.addEventListener("pointerdown",(event)=>{
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+        },true);
         b.addEventListener("click",(event)=>{
           event.preventDefault();
           event.stopPropagation();
+          event.stopImmediatePropagation();
           if(input.readOnly||input.disabled)return;
           const currentText=input.value.trim();
-          const current=Number(currentText);
-          const currentValue=Number.isFinite(current)?current:0;
-          const minAttr=Number(input.min);
-          const maxAttr=Number(input.max);
-          const min=Number.isFinite(minAttr)?minAttr:-Infinity;
-          const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
-          let next=currentValue+direction;
+          const parsed=Number(currentText);
+          const current=Number.isFinite(parsed)?parsed:0;
+          const minRaw=input.getAttribute("min");
+          const maxRaw=input.getAttribute("max");
+          const minNumber=minRaw===null||minRaw.trim()===""?0:Number(minRaw);
+          const maxNumber=maxRaw===null||maxRaw.trim()===""?Infinity:Number(maxRaw);
+          const min=Number.isFinite(minNumber)?minNumber:0;
+          const max=Number.isFinite(maxNumber)?maxNumber:Infinity;
+          let next=current+direction;
           if(next<min)next=min;
           if(next>max)next=max;
           const decimals=(currentText.split(".")[1]||"").length;
-          input.value=decimals?next.toFixed(decimals):String(next);
+          const nextText=decimals?next.toFixed(decimals):String(next);
+          input.value=nextText;
+          input.defaultValue=nextText;
           input.dispatchEvent(new Event("input",{bubbles:true}));
-        });
+          if(input.isConnected&&input.value!==nextText){
+            input.value=nextText;
+            input.defaultValue=nextText;
+          }
+          queueMicrotask(()=>{
+            if(input.isConnected&&input.value!==nextText){
+              input.value=nextText;
+              input.defaultValue=nextText;
+            }
+          });
+        },true);
         return b;
       };
       wrap.insertBefore(make(-1),input);
