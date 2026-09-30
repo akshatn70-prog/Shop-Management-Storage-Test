@@ -1820,3 +1820,298 @@ th{font-size:7px}
   font-size:9px;
   text-align:center;
 }
+
+
+/* ============================================================
+   GLOBAL REFERENCE ICON SYSTEM — NON-HOME SCREENS
+   UI-only: preserves existing control positions, IDs and handlers.
+   ============================================================ */
+:root{
+  --icon-stroke:2;
+  --icon-search:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='m20 20-4-4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-filter:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 5h16M7 12h10m-6 7h2' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-plus:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 5v14M5 12h14' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-minus:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12h14' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-trash:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-pencil:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m4 20 4.2-1 10.4-10.4a2 2 0 0 0-2.8-2.8L5.4 16.2zM14.5 7.5l2 2' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-back:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 12H5m7-7-7 7 7 7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m9 5 7 7-7 7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-bell:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-calendar:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='5' width='16' height='15' rx='2' fill='none' stroke='white' stroke-width='1.9'/%3E%3Cpath d='M8 3v4m8-4v4M4 10h16' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-credit:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='5' width='18' height='14' rx='2' fill='none' stroke='white' stroke-width='1.9'/%3E%3Cpath d='M3 10h18M7 15h4' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-camera:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h3l1.5-2h7L17 7h3v12H4z' fill='none' stroke='white' stroke-width='1.9' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='13' r='3.2' fill='none' stroke='white' stroke-width='1.9'/%3E%3C/svg%3E");
+  --icon-eye:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z' fill='none' stroke='white' stroke-width='1.9'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='white' stroke-width='1.9'/%3E%3C/svg%3E");
+  --icon-refresh:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --icon-arrow-up-right:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 17 17 7M9 7h8v8' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.ui-icon-search{background:currentColor;-webkit-mask-image:var(--icon-search);mask-image:var(--icon-search)}
+.ui-icon-filter{background:currentColor;-webkit-mask-image:var(--icon-filter);mask-image:var(--icon-filter)}
+.ui-icon-plus{background:currentColor;-webkit-mask-image:var(--icon-plus);mask-image:var(--icon-plus)}
+.ui-icon-minus{background:currentColor;-webkit-mask-image:var(--icon-minus);mask-image:var(--icon-minus)}
+.ui-icon-trash-2{background:currentColor;-webkit-mask-image:var(--icon-trash);mask-image:var(--icon-trash)}
+.ui-icon-pencil{background:currentColor;-webkit-mask-image:var(--icon-pencil);mask-image:var(--icon-pencil)}
+.ui-icon-arrow-left{background:currentColor;-webkit-mask-image:var(--icon-back);mask-image:var(--icon-back)}
+.ui-icon-chevron-right{background:currentColor;-webkit-mask-image:var(--icon-chevron);mask-image:var(--icon-chevron)}
+.ui-icon-bell{background:currentColor;-webkit-mask-image:var(--icon-bell);mask-image:var(--icon-bell)}
+.ui-icon-calendar{background:currentColor;-webkit-mask-image:var(--icon-calendar);mask-image:var(--icon-calendar)}
+.ui-icon-credit-card{background:currentColor;-webkit-mask-image:var(--icon-credit);mask-image:var(--icon-credit)}
+.ui-icon-camera{background:currentColor;-webkit-mask-image:var(--icon-camera);mask-image:var(--icon-camera)}
+.ui-icon-eye{background:currentColor;-webkit-mask-image:var(--icon-eye);mask-image:var(--icon-eye)}
+.ui-icon-refresh-cw{background:currentColor;-webkit-mask-image:var(--icon-refresh);mask-image:var(--icon-refresh)}
+.ui-icon-arrow-up-right{background:currentColor;-webkit-mask-image:var(--icon-arrow-up-right);mask-image:var(--icon-arrow-up-right)}
+
+/* Replace the remaining Unicode-looking navigation symbols with the same outline language. */
+.header-back{
+  position:relative;
+  font-size:0!important;
+}
+.header-back::before{
+  content:"";
+  width:18px;
+  height:18px;
+  background:currentColor;
+  -webkit-mask:var(--icon-back) center/contain no-repeat;
+  mask:var(--icon-back) center/contain no-repeat;
+}
+.page:not(.dashboard-page) .refresh-action::before{
+  content:"";
+  display:inline-block;
+  width:17px;
+  height:17px;
+  background:currentColor;
+  -webkit-mask:var(--icon-refresh) center/contain no-repeat;
+  mask:var(--icon-refresh) center/contain no-repeat;
+}
+.page:not(.dashboard-page) .refresh-action{font-size:0}
+
+/* Search controls — same icon + touch target everywhere outside Home. */
+.sale-page .search-row>button,
+.cart-page .search-row>button,
+.stock-page .search-row>button,
+.creditors-page .panel>label+ .table-wrap + * ,
+.debtors-page .panel>label + .table-wrap + *{
+  /* reserved for page-specific controls */
+}
+.sale-page .search-row>button,
+.cart-page .search-row>button,
+.stock-page .search-row>button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+.sale-page .search-row>button::before,
+.cart-page .search-row>button::before,
+.stock-page .search-row>button::before{
+  content:"";
+  width:14px;
+  height:14px;
+  flex:0 0 14px;
+  background:currentColor;
+  -webkit-mask:var(--icon-search) center/contain no-repeat;
+  mask:var(--icon-search) center/contain no-repeat;
+}
+
+/* Add actions: preserve text and placement, add a proper plus icon. */
+.stock-page #addProduct,
+.stock-page #addPurchase,
+.debtors-page #newDebtor,
+.creditors-page #newCreditor{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+.stock-page #addProduct::before,
+.stock-page #addPurchase::before,
+.debtors-page #newDebtor::before,
+.creditors-page #newCreditor::before{
+  content:"";
+  width:14px;
+  height:14px;
+  background:currentColor;
+  -webkit-mask:var(--icon-plus) center/contain no-repeat;
+  mask:var(--icon-plus) center/contain no-repeat;
+}
+
+/* Editing/deletion actions. */
+.edit-product,.edit-cart{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+}
+.edit-product::before,.edit-cart::before{
+  content:"";
+  width:13px;
+  height:13px;
+  background:currentColor;
+  -webkit-mask:var(--icon-pencil) center/contain no-repeat;
+  mask:var(--icon-pencil) center/contain no-repeat;
+}
+.delete-product,.delete-cart{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  color:#ff8990!important;
+}
+.delete-product::before,.delete-cart::before{
+  content:"";
+  width:13px;
+  height:13px;
+  background:currentColor;
+  -webkit-mask:var(--icon-trash) center/contain no-repeat;
+  mask:var(--icon-trash) center/contain no-repeat;
+}
+#deleteAuditDate{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:#ff9aa0;
+}
+#deleteAuditDate::before{
+  content:"";
+  width:14px;
+  height:14px;
+  background:currentColor;
+  -webkit-mask:var(--icon-trash) center/contain no-repeat;
+  mask:var(--icon-trash) center/contain no-repeat;
+}
+
+/* Returns keep their existing positions, but use the same directional icon language. */
+#purchaseReturnBtn,#saleReturnBtn{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px;
+}
+#purchaseReturnBtn::before,#saleReturnBtn::before{
+  content:"";
+  width:15px;
+  height:15px;
+  background:currentColor;
+  -webkit-mask:var(--icon-refresh) center/contain no-repeat;
+  mask:var(--icon-refresh) center/contain no-repeat;
+}
+#saleReturnBtn::before{
+  -webkit-mask:var(--icon-arrow-up-right) center/contain no-repeat;
+  mask:var(--icon-arrow-up-right) center/contain no-repeat;
+}
+
+/* Menu navigation chevrons. */
+.more-menu-item .chevron,
+.home-search-result .chevron{
+  font-size:0!important;
+  width:15px;
+  height:15px;
+  background:currentColor;
+  -webkit-mask:var(--icon-chevron) center/contain no-repeat;
+  mask:var(--icon-chevron) center/contain no-repeat;
+  flex:0 0 15px;
+}
+
+/* Date controls get a consistent calendar affordance while retaining the native picker. */
+.date-inline input[type="date"],
+input[type="date"]{
+  color-scheme:dark;
+}
+.date-inline::before{
+  content:"";
+  width:15px;
+  height:15px;
+  flex:0 0 15px;
+  background:#8ea0bd;
+  -webkit-mask:var(--icon-calendar) center/contain no-repeat;
+  mask:var(--icon-calendar) center/contain no-repeat;
+}
+.date-inline{
+  position:relative;
+}
+.date-inline input[type="date"]{
+  min-width:145px;
+}
+
+/* Toasts are notifications; give every toast the same bell indicator. */
+.toast{
+  display:flex!important;
+  align-items:center;
+  gap:8px;
+}
+.toast::before{
+  content:"";
+  width:16px;
+  height:16px;
+  flex:0 0 16px;
+  background:currentColor;
+  -webkit-mask:var(--icon-bell) center/contain no-repeat;
+  mask:var(--icon-bell) center/contain no-repeat;
+}
+
+/* Payment and money indicators. */
+.sale-page #saleTotal,
+.cart-page .notice,
+.cart-page #cartPreview,
+.stock-page td:nth-child(3),
+.stock-page td:nth-child(4){
+  font-variant-numeric:tabular-nums;
+}
+.payment-icon,.money-icon{
+  display:inline-block;
+  width:15px;
+  height:15px;
+  background:currentColor;
+  -webkit-mask:var(--icon-credit) center/contain no-repeat;
+  mask:var(--icon-credit) center/contain no-repeat;
+}
+
+/* Small touch targets remain at least 36px and visually consistent. */
+.sale-page button,.cart-page button,.stock-page button,
+.returns-page button,.creditors-page button,.debtors-page button,
+.history-page button,.audit-page button,.settings-page button{
+  -webkit-tap-highlight-color:transparent;
+}
+.sale-page .smallbtn,.cart-page .smallbtn,.stock-page .smallbtn,
+.creditors-page .smallbtn,.debtors-page .smallbtn{
+  min-height:36px;
+}
+
+/* Quantity fields: retain native number behavior, but visually emphasize the stepper affordance. */
+input[type="number"]{
+  font-variant-numeric:tabular-nums;
+}
+input[type="number"]::-webkit-inner-spin-button{
+  opacity:1;
+  filter:invert(.75) sepia(1) saturate(2) hue-rotate(220deg);
+}
+
+/* Generic eye/camera affordances for future/current image/password controls. */
+.password-toggle,.visibility-toggle,.show-password,.hide-password{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.password-toggle::before,.visibility-toggle::before,.show-password::before,.hide-password::before{
+  content:"";
+  width:15px;
+  height:15px;
+  background:currentColor;
+  -webkit-mask:var(--icon-eye) center/contain no-repeat;
+  mask:var(--icon-eye) center/contain no-repeat;
+}
+.camera-action,.image-upload-action,.upload-image{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.camera-action::before,.image-upload-action::before,.upload-image::before{
+  content:"";
+  width:15px;
+  height:15px;
+  background:currentColor;
+  -webkit-mask:var(--icon-camera) center/contain no-repeat;
+  mask:var(--icon-camera) center/contain no-repeat;
+}
+
+/* Do not let the global icon treatment alter Home's layout. */
+.dashboard-page .home-search-row>button::before{display:none}
