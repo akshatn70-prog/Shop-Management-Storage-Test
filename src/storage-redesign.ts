@@ -18,7 +18,7 @@ const normalizeTheme=(value:any):Theme=>value==="light-pink"||value==="pink"||va
 let settings:any={shop_name:"My Shop",currency:"INR",timezone:"Asia/Kolkata",workers_can_modify_selling_price:false,allow_below_cost_sales:true,allow_zero_price_sales:true,dashboard_reset_time:"00:00",theme:"current"};
 let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:AnyRow[]=[], ledger:AnyRow[]=[], debtors:AnyRow[]=[], debtorLedger:AnyRow[]=[], daily:AnyRow[]=[], auditRows:AnyRow[]=[], workersRows:Profile[]=[], lifetime:any={};
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
-let bottomNavScrollLeft=0, reportTableScrollLeft=0;
+let bottomNavScrollLeft=0, reportTableScrollLeft=0, dashboardSummaryKind="";
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[], lowStockOnly=false;
@@ -201,14 +201,12 @@ function shell(title:string){
  const visible=["dashboard","sale","stock","more"];
  const icon=(name:string)=>'<span class="ui-icon ui-icon-'+name+'" aria-hidden="true"></span>';
  const visibleButtons=visible.map(id=>{
-   if(id==="more")return '<button id="moreNav" type="button" class="more-nav '+(["dashboard","sale","stock"].includes(activeTab)?"":"active")+'">'+icon("more-horizontal")+'<span>More</span></button>';
+   if(id==="more")return '<button id="moreNav" type="button" class="more-nav '+(activeTab==="more"?"active":"")+'">'+icon("more-horizontal")+'<span>More</span></button>';
    const item=nav.find(x=>x[0]===id)!;
    return '<button data-nav="'+item[0]+'" class="'+(activeTab===item[0]?"active":"")+'">'+icon(item[2])+'<span>'+esc(item[1])+'</span></button>';
  }).join("");
- const moreItems=nav.filter(x=>!visible.includes(x[0])).map(x=>'<button type="button" data-nav="'+x[0]+'" class="more-menu-item">'+icon(x[2])+'<span><b>'+esc(x[1])+'</b><small>Open '+esc(x[1])+'</small></span><span class="chevron">›</span></button>').join("");
- return '<div class="app-shell"><header><div class="header-left">'+(activeTab!=="dashboard"?'<button id="uiBack" type="button" class="header-back" aria-label="Back">‹</button>':"")+'<div class="header-brand"><span class="brand-mark">'+icon("store")+'</span><div><b>'+esc(settings.shop_name)+'</b><span class="muted">'+esc(title==="dashboard"?"Owner Dashboard":title==="sale"?"Sale":title.replace(/(^|_)/g," "))+'</span></div></div></div><button id="logout" class="header-icon-btn" type="button" aria-label="Sign out" title="Sign out">'+icon("log-out")+'</button></header><main><div id="view"></div></main><nav class="bottom-nav">'+visibleButtons+'</nav><div id="moreSheet" class="more-sheet" aria-hidden="true"><div class="more-sheet-backdrop" id="moreSheetBackdrop"></div><section class="more-sheet-panel"><div class="more-sheet-head"><div><b>More</b><span>All shop management functions</span></div><button id="closeMore" type="button" class="header-icon-btn">'+icon("x")+'</button></div><div class="more-menu">'+moreItems+'</div></section></div></div>';
+ return '<div class="app-shell"><header><div class="header-left">'+(activeTab!=="dashboard"?'<button id="uiBack" type="button" class="header-back" aria-label="Back">‹</button>':"")+'<div class="header-brand"><span class="brand-mark">'+icon("store")+'</span><div><b>'+esc(settings.shop_name)+'</b><span class="muted">'+esc(title==="dashboard"?"Owner Dashboard":title==="sale"?"Sale":title==="more"?"More":title.replace(/(^|_)/g," "))+'</span></div></div></div><button id="logout" class="header-icon-btn" type="button" aria-label="Sign out" title="Sign out">'+icon("log-out")+'</button></header><main><div id="view"></div></main><nav class="bottom-nav">'+visibleButtons+'</nav></div>';
 }
-
 
 const normalizeSearchText=(value:any)=>String(value??"").toLowerCase().replace(/[^a-z0-9]+/g,"");
 const searchMatches=(haystack:any,query:string)=>{
@@ -291,37 +289,48 @@ function dashboardSummaryTitle(kind:string){
   "pending-dues":"Pending Dues"
  } as Record<string,string>)[kind]||"Summary";
 }
-function showDashboardSummary(kind:string){
- const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
- if(!modal)return;
+function dashboardSummaryMarkup(kind:string){
+ if(!kind)return "";
  const title=dashboardSummaryTitle(kind),rows=dashboardSummaryRows(kind);
- const content=document.querySelector<HTMLElement>("#dashboardMetricSummaryContent");
- const heading=document.querySelector<HTMLElement>("#dashboardMetricSummaryTitle");
- if(heading)heading.textContent=title;
- if(content){
-  if(!rows.length){
-   content.innerHTML='<div class="dashboard-summary-empty">No '+esc(title.toLowerCase())+' to show.</div>';
-  }else if(kind==="cash"||kind==="upi"){
-   content.innerHTML='<div class="dashboard-summary-head"><span>Sale</span><span>Amount</span><span>Profit</span></div>'+rows.map((x:any)=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span><span>'+esc(x.profit||"")+'</span></div>').join("");
-  }else{
-   content.innerHTML='<div class="dashboard-summary-head"><span>Product / Account</span><span>'+esc(kind==="low-stock"?"Stock":"Amount")+'</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span></div>').join("");
-  }
+ let content="";
+ if(!rows.length){
+  content='<div class="dashboard-summary-empty">No '+esc(title.toLowerCase())+' to show.</div>';
+ }else if(kind==="cash"||kind==="upi"){
+  content='<div class="dashboard-summary-head"><span>Sale</span><span>Amount</span><span>Profit</span></div>'+rows.map((x:any)=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span><span>'+esc(x.profit||"")+'</span></div>').join("");
+ }else{
+  content='<div class="dashboard-summary-head"><span>Product / Account</span><span>'+esc(kind==="low-stock"?"Stock":"Amount")+'</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span></div>').join("");
  }
- modal.classList.add("open");
- modal.setAttribute("aria-hidden","false");
+ return '<section id="dashboardMetricSummary" class="panel dashboard-summary-inline"><div class="dashboard-summary-headbar"><div><h3 id="dashboardMetricSummaryTitle">'+esc(title)+'</h3><small>Records belonging to this dashboard metric.</small></div><button id="dashboardMetricSummaryClose" type="button" class="ghost" aria-label="Close">Close</button></div><div id="dashboardMetricSummaryContent" class="dashboard-summary-content">'+content+'</div></section>';
+}
+function showDashboardSummary(kind:string){
+ dashboardSummaryKind=kind;
+ render();
 }
 function bindDashboardMetricSummaries(){
  document.querySelectorAll<HTMLButtonElement>("[data-dashboard-summary]").forEach(btn=>{
   btn.addEventListener("click",()=>showDashboardSummary(String(btn.dataset.dashboardSummary||"")));
  });
  document.querySelector("#dashboardMetricSummaryClose")?.addEventListener("click",()=>{
-  const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
-  modal?.classList.remove("open");modal?.setAttribute("aria-hidden","true");
+  dashboardSummaryKind="";
+  render();
  });
- document.querySelector("#dashboardMetricSummaryBackdrop")?.addEventListener("click",()=>{
-  const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
-  modal?.classList.remove("open");modal?.setAttribute("aria-hidden","true");
- });
+}
+function moreView(){
+ const owner=profile?.role==="owner";
+ const items:[string,string,string,string][]=[
+  ["sale","Sale","shopping-cart","Create a sale"],
+  ["cart","Cart","shopping-cart","Open cart"],
+  ["stock","Products","package","View and manage stock"],
+  ["returns","Returns","rotate-ccw","Handle sale and purchase returns"],
+  ["creditors","Creditors","wallet","Manage creditor accounts"],
+  ["debtors","Debtors","wallet-cards","Manage debtor accounts"],
+  ["history","History","history","View transaction history"]
+ ];
+ if(owner){
+  items.push(["today","Today Stats","calendar-days","View daily statistics"],["reports","Reports","chart-no-axes-combined","View reports"],["workers","Workers","users","Manage workers"],["audit","Audit","clipboard-check","View audit logs"],["settings","Settings","settings","Shop settings"]);
+ }
+ const icon=(name:string)=>'<span class="ui-icon ui-icon-'+name+'" aria-hidden="true"></span>';
+ return '<section class="page more-page"><div class="page-head"><div><h2>More</h2><p class="muted">All shop management functions are part of the app.</p></div></div><div class="panel more-page-menu"><div class="more-menu">'+items.map(x=>'<button type="button" data-nav="'+x[0]+'" class="more-menu-item">'+icon(x[2])+'<span><b>'+esc(x[1])+'</b><small>'+esc(x[3])+'</small></span><span class="chevron">›</span></button>').join("")+'</div></div></section>';
 }
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
@@ -334,7 +343,7 @@ function dashboard(){
  debtorLedger.filter(x=>x.type==="payment_made").forEach(x=>{const d=debtors.find(v=>v.id===x.debtor_id);activity.push({type:"Debtor payment",title:String(d?.name||"Debtor"),subtitle:"Debtor payment · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.amount||0),date:x.created_at,mode:String(x.payment_mode||"cash")})});
  activity.sort((a,b)=>new Date(b.date||0).getTime()-new Date(a.date||0).getTime());
  const recent=activity.slice(0,8);
- return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="panel home-search-panel"><div class="section-head"><div><h3>Search</h3><small class="muted">Find a menu, action, or product shortcut.</small></div></div><div class="search-row home-search-row"><input id="homeSearch" type="search" autocomplete="off" placeholder="Search products, sales, stock, reports..."><button id="homeSearchBtn" type="button" class="ghost">Search</button></div><div id="homeSearchResults" class="home-search-results"></div></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Low Stock",String(low.length)+" items")+m("Pending Dues",money(pending))+'</div><div id="dashboardMetricSummary" class="dashboard-summary-modal" aria-hidden="true"><div id="dashboardMetricSummaryBackdrop" class="dashboard-summary-backdrop"></div><section class="dashboard-summary-panel" role="dialog" aria-modal="true" aria-labelledby="dashboardMetricSummaryTitle"><div class="dashboard-summary-headbar"><div><h3 id="dashboardMetricSummaryTitle">Summary</h3><small>Only the records belonging to this dashboard metric.</small></div><button id="dashboardMetricSummaryClose" type="button" class="header-icon-btn" aria-label="Close">×</button></div><div id="dashboardMetricSummaryContent" class="dashboard-summary-content"></div></section></div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
+ return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="panel home-search-panel"><div class="section-head"><div><h3>Search</h3><small class="muted">Find a menu, action, or product shortcut.</small></div></div><div class="search-row home-search-row"><input id="homeSearch" type="search" autocomplete="off" placeholder="Search products, sales, stock, reports..."><button id="homeSearchBtn" type="button" class="ghost">Search</button></div><div id="homeSearchResults" class="home-search-results"></div></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Low Stock",String(low.length)+" items")+m("Pending Dues",money(pending))+'</div>'+dashboardSummaryMarkup(dashboardSummaryKind)+'<div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
 }
 
 
@@ -1064,9 +1073,7 @@ function bind(){
  if(activeTab==="dashboard")bindDashboardMetricSummaries();
  document.querySelector("#showAllStock")?.addEventListener("click",()=>{lowStockOnly=false;render()});
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
- document.querySelector("#moreNav")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.add("open");sheet.setAttribute("aria-hidden","false")}});
- document.querySelector("#closeMore")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.remove("open");sheet.setAttribute("aria-hidden","true")}});
- document.querySelector("#moreSheetBackdrop")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.remove("open");sheet.setAttribute("aria-hidden","true")}});
+ document.querySelector("#moreNav")?.addEventListener("click",()=>{activeTab="more";dashboardSummaryKind="";render()});
  document.querySelector("#uiBack")?.addEventListener("click",()=>{activeTab="dashboard";render()});
  document.querySelector("#addProductDashboard")?.addEventListener("click",()=>productForm());
  document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
@@ -1138,7 +1145,7 @@ function render(){
  if(activeTab==="reports"){const oldReport=document.querySelector<HTMLElement>(".reports-scroll");if(oldReport)reportTableScrollLeft=oldReport.scrollLeft;}
  app.innerHTML=shell(activeTab);
  const view=document.querySelector("#view")!;
- view.innerHTML=activeTab==="dashboard"?dashboard():activeTab==="sale"?sale():activeTab==="cart"?cart():activeTab==="stock"?stock():activeTab==="returns"?returnsView():activeTab==="creditors"?creditorsView():activeTab==="debtors"?debtorsView():activeTab==="history"?history():activeTab==="today"?today():activeTab==="reports"?reports():activeTab==="workers"?workers():activeTab==="audit"?audit():settingsView();
+ view.innerHTML=activeTab==="dashboard"?dashboard():activeTab==="more"?moreView():activeTab==="sale"?sale():activeTab==="cart"?cart():activeTab==="stock"?stock():activeTab==="returns"?returnsView():activeTab==="creditors"?creditorsView():activeTab==="debtors"?debtorsView():activeTab==="history"?history():activeTab==="today"?today():activeTab==="reports"?reports():activeTab==="workers"?workers():activeTab==="audit"?audit():settingsView();
  bind();
  fitDashboardMetricValues();
  const newNav=document.querySelector<HTMLElement>(".bottom-nav");if(newNav){newNav.scrollLeft=bottomNavScrollLeft;newNav.addEventListener("scroll",()=>{bottomNavScrollLeft=newNav.scrollLeft},{passive:true})}
