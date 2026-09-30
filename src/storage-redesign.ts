@@ -19,6 +19,7 @@ let settings:any={shop_name:"My Shop",currency:"INR",timezone:"Asia/Kolkata",wor
 let products:Product[]=[], sales:AnyRow[]=[], purchases:AnyRow[]=[], creditors:AnyRow[]=[], ledger:AnyRow[]=[], debtors:AnyRow[]=[], debtorLedger:AnyRow[]=[], daily:AnyRow[]=[], auditRows:AnyRow[]=[], workersRows:Profile[]=[], lifetime:any={};
 let demo=false, demoReady=false, activeTab="dashboard", historyType="sales", historyRange="today", historyDate="", reportDate="", purchaseDate="", auditDate="";
 let customEntryMode=false, customEntryDate="";
+let reportLookup:AnyRow|null=null, reportLookupDate="", reportLookupLoading=false;
 let bottomNavScrollLeft=0, reportTableScrollLeft=0, dashboardSummaryKind="";
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
@@ -210,6 +211,21 @@ async function loadData(){
  ]);
  if(set.data)settings={...settings,...set.data,theme:normalizeTheme(set.data.theme||localStorage.getItem(THEME_KEY)||"current")};applyTheme(settings.theme);
  products=p.data||[];sales=s.data||[];purchases=q.data||[];creditors=c.data||[];ledger=l.data||[];debtors=db.data||[];debtorLedger=dl.data||[];daily=df.data||[];lifetime=life.data||{lifetime_sales:0,lifetime_purchases:0,lifetime_profit:0};auditRows=au.data||[];returnsRows=rr?.data||[];workersRows=(wr.data||[]).map((x:any)=>({...x,role:x.role as Role}));
+}
+
+async function loadReportDate(date:string){
+ if(!date||!supabase||demo){reportLookup=null;reportLookupDate=date;return}
+ reportLookupLoading=true;
+ try{
+  const r=await supabase.from("daily_financial_summaries").select("*").eq("business_date",date).maybeSingle();
+  if(r.error)throw r.error;
+  reportLookup=r.data||null;
+  reportLookupDate=date;
+ }catch(err){
+  reportLookup=null;
+  reportLookupDate=date;
+  notify(errorMessage(err),"error");
+ }finally{reportLookupLoading=false}
 }
 
 async function setupRealtime(){
@@ -882,12 +898,13 @@ function today(){
 
 function reports(){
  const recent=daily.filter(x=>x.business_date).slice(0,7);
- const selected=reportDate?daily.find(x=>x.business_date===reportDate):null;
+ const selected=reportDate?(reportLookupDate===reportDate?reportLookup:daily.find(x=>x.business_date===reportDate)):null;
  const total=lifetime||{};
- const latest=[...daily,...(lifetime?[lifetime]:[])].map((x:any)=>x.updated_at).filter(Boolean).sort().pop();
- const row=(d:any)=>'<tr><td>'+d.business_date+'</td><td>'+String(d.total_transactions||0)+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.cash_profit)+'</td><td>'+money(d.upi_profit)+'</td><td>'+money(d.credit_profit)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td><td>'+money(d.purchase_credit)+'</td><td>'+money(d.sales_returns)+'</td><td>'+money(d.purchase_returns)+'</td><td>'+money(d.debtor_payment_total)+'</td><td>'+money(d.debtor_payment_cash)+'</td><td>'+money(d.debtor_payment_upi)+'</td></tr>';
+ const latest=[...daily,...(reportLookup?[reportLookup]:[]),(lifetime?[lifetime]:[])].map((x:any)=>x.updated_at).filter(Boolean).sort().pop();
+ const row=(d:any)=>'<tr><td>'+d.business_date+'</td><td>'+String(d.total_transactions||0)+'</td><td>'+money(d.total_revenue)+'</td><td>'+money(d.cash_sales)+'</td><td>'+money(d.upi_sales)+'</td><td>'+money(d.credit_sales)+'</td><td>'+money(d.total_profit)+'</td><td>'+money(d.cash_profit)+'</td><td>'+money(d.upi_profit)+'</td><td>'+money(d.credit_profit)+'</td><td>'+money(d.purchase_cash)+'</td><td>'+money(d.purchase_upi)+'</td><td>'+money(d.purchase_credit)+'</td><td>'+money(d.sales_returns)+'</td><td>'+money(d.purchase_returns)+'</td><td>'+money(d.debtor_payment_total)+'</td><td>'+money(d.debtor_payment_cash)+'</td><td>'+money(d.debtor_payment_upi)+'</td><td>'+money(d.purchase_credit_payment_total)+'</td><td>'+money(d.purchase_credit_payment_cash)+'</td><td>'+money(d.purchase_credit_payment_upi)+'</td></tr>';
  const rows=selected?[selected]:recent;
- return '<section class="page reports-page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div><p class="muted">Latest 7 days are shown by default. Updates refresh automatically. '+(latest?'Last update: '+fmt(latest):'')+'</p><div class="table-wrap swipeable reports-scroll"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="18" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
+ const status=reportLookupLoading?'Loading selected date…':reportDate&&!selected?'No aggregate exists for this date.':"";
+ return '<section class="page reports-page"><h2>Reports</h2><div class="metrics">'+m("Lifetime Sales",money(total.lifetime_sales))+m("Lifetime Purchases",money(total.lifetime_purchases))+m("Lifetime Profit",money(total.lifetime_profit))+'</div><div class="panel"><div class="section-head"><h3>Date-wise Financials</h3><label class="date-inline">Search date<input id="reportDate" type="date" value="'+esc(reportDate)+'"></label></div><p class="muted">Latest 7 days are shown by default. Search any past business date directly; the selected date is fetched from the database. '+(latest?'Last update: '+fmt(latest):'')+'</p>'+(status?'<p class="muted">'+esc(status)+'</p>':"")+'<div class="table-wrap swipeable reports-scroll"><table><thead><tr><th>Date</th><th>Txn</th><th>Sales</th><th>Cash</th><th>UPI</th><th>Credit</th><th>Profit</th><th>Cash Profit</th><th>UPI Profit</th><th>Credit Profit</th><th>Cash Purchase</th><th>UPI Purchase</th><th>Debt Purchase</th><th>Sales Return</th><th>Purchase Return</th><th>Debtor Paid</th><th>Paid Cash</th><th>Paid UPI</th><th>Supplier Paid</th><th>Supplier Cash</th><th>Supplier UPI</th></tr></thead><tbody>'+rows.map(row).join("")+(rows.length?"":'<tr><td colspan="21" class="muted">No financial aggregate for this date.</td></tr>')+'</tbody></table></div></div></section>';
 }
 
 function workers(){
@@ -1243,7 +1260,7 @@ function bind(){
  if(activeTab==="debtors")bindDebtors();
  if(activeTab==="creditors")bindCreditors();
  if(activeTab==="history")bindHistory(); if(activeTab==="returns")bindReturns();
- if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",e=>{reportDate=(e.currentTarget as HTMLInputElement).value;render()});
+ if(activeTab==="reports")document.querySelector("#reportDate")?.addEventListener("change",async e=>{reportDate=(e.currentTarget as HTMLInputElement).value;reportLookup=null;reportLookupDate="";if(reportDate)await loadReportDate(reportDate);render()});
  if(activeTab==="audit")document.querySelector("#auditDate")?.addEventListener("change",e=>{auditDate=(e.currentTarget as HTMLInputElement).value;render()});
  if(activeTab==="stock"){
  if(pendingStockSearch){
