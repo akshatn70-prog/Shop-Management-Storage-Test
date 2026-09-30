@@ -369,9 +369,15 @@ function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+ledger.filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
  const activity:{type:string;title:string;subtitle:string;amount:number;date:any;mode?:string;product_id?:string}[]=[];
- sales.filter(x=>!x.voided).forEach(x=>activity.push({type:"Sale",title:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Sale · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_sale||0),date:x.sold_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
- purchases.filter(x=>!x.pre_stock).forEach(x=>activity.push({type:"Purchase",title:String(x.product_name_snapshot||"Product unavailable"),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Purchase · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_cost||0),date:x.purchased_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
- returnsRows.forEach(x=>activity.push({type:"Return",title:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),subtitle:(String(x.return_type||"return").replace(/_/g," ")+" · "+String(x.payment_mode||"cash")).toUpperCase(),amount:Number(x.total_amount||0),date:x.returned_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
+ const activityProductName=(row:any)=>{
+  const id=row.product_id||row.products?.id;
+  const current=id?products.find(p=>p.id===id)?.name:"";
+  const snapshot=String(row.product_name_snapshot||"").trim();
+  return snapshot&&snapshot.toLowerCase()!=="deleted product" ? snapshot : (current||String(row.products?.name||"Product unavailable"));
+ };
+ sales.filter(x=>!x.voided).forEach(x=>activity.push({type:"Sale",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Sale · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_sale||0),date:x.sold_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
+ purchases.filter(x=>!x.pre_stock).forEach(x=>activity.push({type:"Purchase",title:activityProductName(x),subtitle:(x.quantity_display?String(x.quantity_display)+" · ":"")+"Purchase · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.total_cost||0),date:x.purchased_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
+ returnsRows.forEach(x=>activity.push({type:"Return",title:activityProductName(x),subtitle:(String(x.return_type||"return").replace(/_/g," ")+" · "+String(x.payment_mode||"cash")).toUpperCase(),amount:Number(x.total_amount||0),date:x.returned_at,mode:String(x.payment_mode||"cash"),product_id:x.product_id||x.products?.id}));
  ledger.filter(x=>x.type==="payment_received").forEach(x=>{const cr=creditors.find(c=>c.id===x.creditor_id);activity.push({type:"Credit payment",title:String(cr?.name||"Creditor"),subtitle:"Credit payment · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.amount||0),date:x.created_at,mode:String(x.payment_mode||"cash")})});
  debtorLedger.filter(x=>x.type==="payment_made").forEach(x=>{const d=debtors.find(v=>v.id===x.debtor_id);activity.push({type:"Debtor payment",title:String(d?.name||"Debtor"),subtitle:"Debtor payment · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.amount||0),date:x.created_at,mode:String(x.payment_mode||"cash")})});
  activity.sort((a,b)=>new Date(b.date||0).getTime()-new Date(a.date||0).getTime());
