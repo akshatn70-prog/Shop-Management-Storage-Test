@@ -879,13 +879,13 @@ function bindHomeSearch(){
  const run=()=>{
   const q=input.value.trim();
   const menu=homeSearchItems();
-  const menuMatches=q?menu.filter(x=>searchMatches(x.label+" "+x.keywords,q)):menu.slice(0,6);
+  const menuMatches=q?menu.filter(x=>searchMatches(x.label+" "+x.keywords,q)):[];
   const productMatches=q?products.filter(p=>p.is_active!==false&&searchMatches([p.name,(p as any).sku,(p as any).barcode,(p as any).product_code,p.id].filter(Boolean).join(" "),q)).slice(0,8):[];
-  const rows=[
+  const rows=q?[
    ...menuMatches.slice(0,8).map((x,i)=>'<button type="button" class="home-search-result" data-search-kind="menu" data-search-index="'+i+'"><span class="home-search-result-icon ui-icon ui-icon-'+(x.tab==="dashboard"?"home":x.tab==="sale"?"shopping-cart":x.tab==="stock"?"package":x.tab==="cart"?"shopping-cart":x.tab==="returns"?"rotate-ccw":x.tab==="creditors"?"wallet":x.tab==="debtors"?"wallet-cards":x.tab==="history"?"history":x.tab==="reports"?"chart-no-axes-combined":x.tab==="workers"?"users":x.tab==="audit"?"clipboard-check":"settings")+'"></span><span><b>'+esc(x.label)+'</b><small>'+esc(x.description)+'</small></span><span class="chevron">›</span></button>'),
    ...productMatches.map((p,i)=>'<button type="button" class="home-search-result" data-search-kind="product" data-product-index="'+i+'"><span class="home-search-result-icon ui-icon ui-icon-package"></span><span><b>'+esc(p.name)+'</b><small>Product shortcut · Open Stock</small></span><span class="chevron">›</span></button>')
-  ];
-  results.innerHTML=rows.length?rows.join(""):'<div class="home-search-empty">No matching menu or product found.</div>';
+  ]:[];
+  results.innerHTML=q?(rows.length?rows.join(""):'<div class="home-search-empty">No matching menu or product found.</div>'):"";
   results.querySelectorAll<HTMLButtonElement>(".home-search-result").forEach(btn=>btn.addEventListener("click",()=>{
    if(btn.dataset.searchKind==="product"){
     const p=productMatches[Number(btn.dataset.productIndex)];
