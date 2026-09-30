@@ -984,7 +984,17 @@ function bindSettings(){
  lines.push("","This report contains stock, outstanding creditor/debtor balances, and permanent 90-day date-wise financial aggregates.","It does not contain shop settings, owner/worker account information, or audit records.","");
  await downloadText("Shop_Report_All_"+localDate()+".txt",lines.join("\n"));
  notify("Complete shop report downloaded as TXT.","success");
-}catch(err){notify(errorMessage(err),"error")}});document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(!supabase)return notify("Supabase is not connected.","error");const confirmation=window.prompt("⚠️ DELETE ALL SHOP DATA\\n\\nThis permanently deletes sales, purchases, returns, reports, stock items/products, debtors, creditors, credit/debtor history, and transaction history from this Supabase project.\\n\\nYour owner/worker accounts, shop settings, and Supabase connection will be kept so the app remains usable.\\n\\nType DELETE exactly to continue.");if(confirmation!=="DELETE"){if(confirmation!==null)notify("Clear All cancelled. You must type DELETE exactly.","info");return}const btn=document.querySelector<HTMLButtonElement>("#clearAll");if(btn){btn.disabled=true;btn.textContent="Deleting…"}try{const r=await supabase.rpc("clear_all_shop_data_v2");if(r.error)throw r.error;await loadData();render();notify("All shop transaction and master data was permanently deleted from Supabase.","success")}catch(err){if(btn){btn.disabled=false;btn.textContent="Clear All Transaction Data"}notify(errorMessage(err),"error")}});
+}catch(err){notify(errorMessage(err),"error")}});document.querySelector("#clearAll")?.addEventListener("click",async()=>{if(demo)return notify("Demo data is temporary; no real database was changed.","info");if(!supabase)return notify("Supabase is not connected.","error");const confirmation=window.prompt("⚠️ DELETE ALL SHOP DATA\\n\\nThis permanently deletes sales, purchases, returns, reports, stock items/products, debtors, creditors, credit/debtor history, and transaction history from this Supabase project.\\n\\nYour owner/worker accounts, shop settings, and Supabase connection will be kept so the app remains usable.\\n\\nType DELETE exactly to continue.");if(confirmation!=="DELETE"){if(confirmation!==null)notify("Clear All cancelled. You must type DELETE exactly.","info");return}const btn=document.querySelector<HTMLButtonElement>("#clearAll");if(btn){btn.disabled=true;btn.textContent="Deleting…"}try{
+ const r=await supabase.rpc("clear_all_shop_data_v2");if(r.error)throw r.error;
+ let photoCleanupError:any=null;
+ try{
+  const photoCleanup=await supabase.storage.from(PRODUCT_PHOTO_BUCKET).emptyBucket();
+  if(photoCleanup.error)photoCleanupError=photoCleanup.error;
+ }catch(storageErr){photoCleanupError=storageErr}
+ await loadData();render();
+ if(photoCleanupError)notify("All shop data was cleared, but product photo Storage cleanup failed. Please use Clear All again to retry photo cleanup.","error");
+ else notify("All shop transaction, master data, and product photos were permanently deleted from Supabase.","success")
+}catch(err){if(btn){btn.disabled=false;btn.textContent="Clear All Transaction Data"}notify(errorMessage(err),"error")}});
 }
 
 function returnsView(){
