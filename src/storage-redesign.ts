@@ -798,6 +798,12 @@ function returnForm(type:"purchase"|"sale"){
 }
 function bind(){
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
+ document.querySelector("#moreNav")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.add("open");sheet.setAttribute("aria-hidden","false")}});
+ document.querySelector("#closeMore")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.remove("open");sheet.setAttribute("aria-hidden","true")}});
+ document.querySelector("#moreSheetBackdrop")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.remove("open");sheet.setAttribute("aria-hidden","true")}});
+ document.querySelector("#uiBack")?.addEventListener("click",()=>{activeTab="dashboard";render()});
+ document.querySelector("#addPurchaseDashboard")?.addEventListener("click",()=>purchaseForm());
+ document.querySelector("#addProductDashboard")?.addEventListener("click",()=>productForm());
  document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];activeTab="dashboard";login()});
  const refreshBtn=document.querySelector<HTMLButtonElement>("#refresh");
  if(refreshBtn){
