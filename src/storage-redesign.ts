@@ -942,7 +942,7 @@ function bindQuantitySteppers(){
    b.addEventListener("click",()=>{
     if(input.readOnly||input.disabled)return;
     const step=1;
-    const minAttr=Number(input.min),maxAttr=Number(input.max);
+    const minAttr=0,maxAttr=Number(input.max);
     const min=Number.isFinite(minAttr)?minAttr:-Infinity;
     const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
     let value=Number(input.value);
