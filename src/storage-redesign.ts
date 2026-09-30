@@ -32,7 +32,7 @@ const CART_VOID_RPC="void_sale_transaction";
 const app=document.querySelector<HTMLDivElement>("#app")!;
 
 const iconForPayment=(mode:string)=>mode==="upi"?"UPI":mode==="split"?"⇄":"₹";
-const m=(l:string,v:string)=>'<div class="metric"><span>'+l+'</span><b class="metric-value">'+v+'</b></div>';
+const m=(l:string,v:string)=>'<button type="button" class="metric metric-button" data-dashboard-summary="'+esc(l).toLowerCase().replace(/[^a-z]+/g,"-")+'"><span>'+l+'</span><b class="metric-value">'+v+'</b></button>';
 const money=(n:any)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:settings.currency||"INR",maximumFractionDigits:2}).format(Number(n)||0);
 const saleTotal=(p:Product|null|undefined,quantityBase:number,sellingPricePerBaseUnit:number)=>{if(p?.unit_type!=="weight")return quantityBase*sellingPricePerBaseUnit;return (p.weight_price_unit||"kg")==="grams"?quantityBase*sellingPricePerBaseUnit:(quantityBase/1000)*sellingPricePerBaseUnit};
 const saleCreditAmount=(sale:AnyRow)=>{const explicit=Number(sale?.credit_amount);if(Number.isFinite(explicit)&&explicit>0)return explicit;if(sale?.payment_mode==="credit"||sale?.payment_mode==="credit_split")return Math.max(0,Number(sale?.total_sale||0)-Number(sale?.cash_amount||0)-Number(sale?.upi_amount||0));return 0};
@@ -245,6 +245,74 @@ function openHomeSearchItem(item:{tab:string;action?:string}){
  render();
 }
 
+function dashboardSummaryRows(kind:string){
+ const today=currentSales();
+ if(kind==="total-sales")return today.map(x=>({name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(x.total_sale)}));
+ if(kind==="total-profit")return today.map(x=>({name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(x.gross_profit)}));
+ if(kind==="cash"){
+  return today.filter(x=>Number(x.cash_amount||0)>0).map(x=>{
+   const total=Math.max(0,Number(x.total_sale||0)),cash=Number(x.cash_amount||0),profit=Number(x.gross_profit||0)*(total?cash/total:0);
+   return {name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(cash),profit:money(profit)};
+  });
+ }
+ if(kind==="upi"){
+  return today.filter(x=>Number(x.upi_amount||0)>0).map(x=>{
+   const total=Math.max(0,Number(x.total_sale||0)),upi=Number(x.upi_amount||0),profit=Number(x.gross_profit||0)*(total?upi/total:0);
+   return {name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(upi),profit:money(profit)};
+  });
+ }
+ if(kind==="low-stock"){
+  return products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base))
+   .map(p=>({name:p.name,amount:String(p.current_stock_base)+" "+(p.unit_type==="piece"?"pcs":"g")+" / limit "+String(p.low_stock_threshold_base)+(p.unit_type==="piece"?" pcs":" g")}));
+ }
+ if(kind==="pending-dues"){
+  return creditors.map(c=>({name:String(c.name),amount:money(ledger.filter(x=>x.creditor_id===c.id).reduce((a,x)=>a+(x.type==="credit_sale"||x.type==="adjustment"?Number(x.amount||0):x.type==="payment_received"?-Number(x.amount||0):0),0))}))
+   .filter(x=>Number(x.amount.replace(/[^0-9.-]/g,""))>0);
+ }
+ return [];
+}
+function dashboardSummaryTitle(kind:string){
+ return ({
+  "total-sales":"Total Sales",
+  "total-profit":"Total Profit",
+  "cash":"Cash Sales",
+  "upi":"UPI Sales",
+  "low-stock":"Low Stock Products",
+  "pending-dues":"Pending Dues"
+ } as Record<string,string>)[kind]||"Summary";
+}
+function showDashboardSummary(kind:string){
+ const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
+ if(!modal)return;
+ const title=dashboardSummaryTitle(kind),rows=dashboardSummaryRows(kind);
+ const content=document.querySelector<HTMLElement>("#dashboardMetricSummaryContent");
+ const heading=document.querySelector<HTMLElement>("#dashboardMetricSummaryTitle");
+ if(heading)heading.textContent=title;
+ if(content){
+  if(!rows.length){
+   content.innerHTML='<div class="dashboard-summary-empty">No '+esc(title.toLowerCase())+' to show.</div>';
+  }else if(kind==="cash"||kind==="upi"){
+   content.innerHTML='<div class="dashboard-summary-head"><span>Sale</span><span>Amount</span><span>Profit</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span><span>'+esc(x.profit||"")+'</span></div>').join("");
+  }else{
+   content.innerHTML='<div class="dashboard-summary-head"><span>Product / Account</span><span>'+esc(kind==="low-stock"?"Stock":"Amount")+'</span></div>'+rows.map(x=>'<div class="dashboard-summary-row"><b>'+esc(x.name)+'</b><span>'+esc(x.amount)+'</span></div>').join("");
+  }
+ }
+ modal.classList.add("open");
+ modal.setAttribute("aria-hidden","false");
+}
+function bindDashboardMetricSummaries(){
+ document.querySelectorAll<HTMLButtonElement>("[data-dashboard-summary]").forEach(btn=>{
+  btn.addEventListener("click",()=>showDashboardSummary(String(btn.dataset.dashboardSummary||"")));
+ });
+ document.querySelector("#dashboardMetricSummaryClose")?.addEventListener("click",()=>{
+  const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
+  modal?.classList.remove("open");modal?.setAttribute("aria-hidden","true");
+ });
+ document.querySelector("#dashboardMetricSummaryBackdrop")?.addEventListener("click",()=>{
+  const modal=document.querySelector<HTMLElement>("#dashboardMetricSummary");
+  modal?.classList.remove("open");modal?.setAttribute("aria-hidden","true");
+ });
+}
 function dashboard(){
  const s=currentStats(),low=products.filter(p=>Number(p.current_stock_base)<=Number(p.low_stock_threshold_base));
  const pending=creditors.reduce((a,c)=>a+ledger.filter(x=>x.creditor_id===c.id&&x.type==="credit_sale").reduce((v,x)=>v+Number(x.amount||0),0),0);
@@ -256,7 +324,7 @@ function dashboard(){
  debtorLedger.filter(x=>x.type==="payment_made").forEach(x=>{const d=debtors.find(v=>v.id===x.debtor_id);activity.push({type:"Debtor payment",title:String(d?.name||"Debtor"),subtitle:"Debtor payment · "+String(x.payment_mode||"cash").toUpperCase(),amount:Number(x.amount||0),date:x.created_at,mode:String(x.payment_mode||"cash")})});
  activity.sort((a,b)=>new Date(b.date||0).getTime()-new Date(a.date||0).getTime());
  const recent=activity.slice(0,8);
- return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="panel home-search-panel"><div class="section-head"><div><h3>Search</h3><small class="muted">Find a menu, action, or product shortcut.</small></div></div><div class="search-row home-search-row"><input id="homeSearch" type="search" autocomplete="off" placeholder="Search products, sales, stock, reports..."><button id="homeSearchBtn" type="button" class="ghost">Search</button></div><div id="homeSearchResults" class="home-search-results"></div></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+('<button id="lowStockDashboard" type="button" class="metric metric-button"><span>Low Stock</span><b class="metric-value">'+String(low.length)+' items</b></button>')+m("Pending Dues",money(pending))+'</div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
+ return '<section class="page dashboard-page"><div class="page-head"><div><h2>Today</h2><p class="muted">'+esc(localDate())+'</p></div><button id="refresh" type="button" class="ghost refresh-action" aria-label="Refresh data">↻</button></div><div class="panel home-search-panel"><div class="section-head"><div><h3>Search</h3><small class="muted">Find a menu, action, or product shortcut.</small></div></div><div class="search-row home-search-row"><input id="homeSearch" type="search" autocomplete="off" placeholder="Search products, sales, stock, reports..."><button id="homeSearchBtn" type="button" class="ghost">Search</button></div><div id="homeSearchResults" class="home-search-results"></div></div><div class="metrics dashboard-metrics">'+m("Total Sales",money(s.sales))+m("Total Profit",money(s.profit))+m("Cash",money(s.cash))+m("UPI",money(s.upi))+m("Low Stock",String(low.length)+" items")+m("Pending Dues",money(pending))+'</div><div id="dashboardMetricSummary" class="dashboard-summary-modal" aria-hidden="true"><div id="dashboardMetricSummaryBackdrop" class="dashboard-summary-backdrop"></div><section class="dashboard-summary-panel" role="dialog" aria-modal="true" aria-labelledby="dashboardMetricSummaryTitle"><div class="dashboard-summary-headbar"><div><h3 id="dashboardMetricSummaryTitle">Summary</h3><small>Only the records belonging to this dashboard metric.</small></div><button id="dashboardMetricSummaryClose" type="button" class="header-icon-btn" aria-label="Close">×</button></div><div id="dashboardMetricSummaryContent" class="dashboard-summary-content"></div></section></div><div class="section-head dashboard-section-title"><h3>Quick Actions</h3></div><div class="quick-grid dashboard-quick"><button data-nav="sale" class="quick-action quick-sale"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Add Sale</b></button><button data-nav="cart" class="quick-action quick-cart"><span class="quick-icon ui-icon ui-icon-shopping-cart"></span><b>Cart</b></button><button data-nav="stock" class="quick-action quick-stock"><span class="quick-icon ui-icon ui-icon-package"></span><b>Stock</b></button><button data-nav="creditors" class="quick-action quick-creditor"><span class="quick-icon ui-icon ui-icon-wallet"></span><b>Creditor</b></button></div><div class="panel recent-panel"><div class="section-head"><h3>Recent Activity</h3><button type="button" data-nav="history" class="link-btn">History</button></div><div class="recent-activity-list">'+(recent.map((x,i)=>{const typeClass=x.type.toLowerCase().replace(/[^a-z]+/g,"-");return '<div class="recent-activity-row"><span class="recent-activity-icon recent-activity-'+typeClass+'">'+iconForPayment(x.mode||"cash")+'</span><div class="recent-activity-main"><b>'+esc(x.title)+'</b><small>'+esc(x.subtitle)+" · "+esc(fmt(x.date))+'</small></div><div class="recent-activity-total"><b>'+money(x.amount)+'</b><small>'+esc(x.type)+'</small></div></div>';}).join("")||'<div class="empty-state">No recent activity.</div>')+'</div></div></section>';
 }
 
 
@@ -858,7 +926,7 @@ function returnForm(type:"purchase"|"sale"){
  f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f),p=products.find(x=>x.id===String(fd.get("product"))),qty=Number(fd.get("qty")),price=Number(fd.get("price")),unit=String(fd.get("unit")),mode=String(fd.get("mode")),source=String(fd.get("source")||"").trim()||null,accountId=String(fd.get("account")||"")||null;if(!p||qty<=0||price<0)return notify("Enter valid return details.","error");if(p.unit_type==="piece"&&(unit!=="piece"||qty%1!==0))return notify("Piece quantity must be a whole number.","error");if(p.unit_type==="weight"&&!["grams","kg"].includes(unit))return notify("Choose grams or kg.","error");if(mode==="credit_adjustment"&&!accountId)return notify("Select the account for a balance adjustment.","error");const base=p.unit_type==="weight"?(unit==="kg"?qty*1000:qty):qty;if(!demo){const rpc=sale?"record_sale_return":"record_purchase_return",r=await supabase!.rpc(rpc,{p_product_id:p.id,p_quantity_base:base,p_quantity_display:qty,p_return_unit:unit,p_return_price_per_base_unit:price,p_payment_mode:mode,p_source_id:source,p_account_id:accountId});if(r.error)return notify(r.error.message,"error");await loadData()}else{if(!sale&&p.current_stock_base<base)return notify("Insufficient stock for purchase return.","error");p.current_stock_base+=sale?base:-base;returnsRows.unshift({id:"demo-"+Date.now(),return_type:type,product_id:p.id,product_name_snapshot:p.name,quantity_base:base,quantity_display:qty,return_unit:unit,total_amount:saleTotal(p,base,price),payment_mode:mode,returned_at:new Date().toISOString(),products:{name:p.name}})}render();notify("Return recorded.","success")});calc();
 }
 function bindQuantitySteppers(){
- const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="qty"],input[type="number"][name="quantity"]'));
+ const inputs=Array.from(document.querySelectorAll<HTMLInputElement>('input[type="number"][name="qty"],input[type="number"][name="quantity"],input[type="number"][name="price"],input[type="number"][name="selling"],input[type="number"][name="purchase"],input[type="number"][name="sale"]'));
  inputs.forEach(input=>{
   if(input.closest(".qty-stepper"))return;
   const wrap=document.createElement("div");
@@ -872,7 +940,7 @@ function bindQuantitySteppers(){
    b.setAttribute("aria-label",direction<0?"Decrease quantity":"Increase quantity");
    b.innerHTML='<span class="ui-icon ui-icon-'+(direction<0?"minus":"plus")+'" aria-hidden="true"></span>';
    b.addEventListener("click",()=>{
-    const step=Math.abs(Number(input.step)||1);
+    const step=1;
     const minAttr=Number(input.min),maxAttr=Number(input.max);
     const min=Number.isFinite(minAttr)?minAttr:-Infinity;
     const max=Number.isFinite(maxAttr)?maxAttr:Infinity;
@@ -880,7 +948,7 @@ function bindQuantitySteppers(){
     if(!Number.isFinite(value))value=Number.isFinite(min)?min:0;
     value+=direction*step;
     value=Math.max(min,Math.min(max,value));
-    const decimals=Math.max(0,(String(input.step||"1").split(".")[1]||"").length);
+    const decimals=0;
     input.value=decimals?value.toFixed(decimals):String(Math.round(value));
     input.dispatchEvent(new Event("input",{bubbles:true}));
     input.dispatchEvent(new Event("change",{bubbles:true}));
@@ -939,7 +1007,7 @@ function bindHomeSearch(){
 function bind(){
  bindQuantitySteppers();
  if(activeTab==="dashboard")bindHomeSearch();
- document.querySelector("#lowStockDashboard")?.addEventListener("click",()=>{lowStockOnly=true;activeTab="stock";render()});
+ if(activeTab==="dashboard")bindDashboardMetricSummaries();
  document.querySelector("#showAllStock")?.addEventListener("click",()=>{lowStockOnly=false;render()});
  document.querySelectorAll<HTMLElement>("[data-nav]").forEach(x=>x.addEventListener("click",()=>{const next=x.dataset.nav||"dashboard";if(next!=="reports")reportTableScrollLeft=0;activeTab=next;render()}));
  document.querySelector("#moreNav")?.addEventListener("click",()=>{const sheet=document.querySelector("#moreSheet") as HTMLElement|null;if(sheet){sheet.classList.add("open");sheet.setAttribute("aria-hidden","false")}});
