@@ -361,18 +361,18 @@ function openHomeSearchItem(item:{tab:string;action?:string}){
 
 function dashboardSummaryRows(kind:string){
  const today=currentSales();
- if(kind==="total-sales")return today.map(x=>({name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(x.total_sale)}));
- if(kind==="total-profit")return today.map(x=>({name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(x.gross_profit)}));
+ if(kind==="total-sales")return today.map(x=>({name:transactionProductName(x),amount:money(x.total_sale)}));
+ if(kind==="total-profit")return today.map(x=>({name:transactionProductName(x),amount:money(x.gross_profit)}));
  if(kind==="cash"){
   return today.filter(x=>Number(x.cash_amount||0)>0).map(x=>{
    const total=Math.max(0,Number(x.total_sale||0)),cash=Number(x.cash_amount||0),profit=Number(x.gross_profit||0)*(total?cash/total:0);
-   return {name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(cash),profit:money(profit)};
+   return {name:transactionProductName(x),amount:money(cash),profit:money(profit)};
   });
  }
  if(kind==="upi"){
   return today.filter(x=>Number(x.upi_amount||0)>0).map(x=>{
    const total=Math.max(0,Number(x.total_sale||0)),upi=Number(x.upi_amount||0),profit=Number(x.gross_profit||0)*(total?upi/total:0);
-   return {name:String(x.product_name_snapshot||x.products?.name||"Product unavailable"),amount:money(upi),profit:money(profit)};
+   return {name:transactionProductName(x),amount:money(upi),profit:money(profit)};
   });
  }
  if(kind==="low-stock"){
