@@ -148,7 +148,12 @@ begin
       select 1
       from public.debtors d
       where d.id=p_debtor_id
-        and d.shop_id=v_shop_id
+        and d.shop_id=(
+          select pr.shop_id
+          from public.profiles pr
+          where pr.id=(select auth.uid())
+            and pr.is_active=true
+        )
         and d.is_active=true
     ) then
       raise exception 'Debtor not found for this shop';
