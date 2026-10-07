@@ -47,6 +47,9 @@ const restoreHorizontalScroll=()=>{
 };
 let realtimeChannel:any=null;
 let realtimeRefreshTimer:number|undefined;
+let backgroundRefreshInFlight=false;
+let backgroundRefreshQueued=false;
+let backgroundRefreshTimer:number|undefined;
 let cartItems:AnyRow[]=[], returnsRows:AnyRow[]=[], lowStockOnly=false;
 const voidingSaleKeys=new Set<string>();
 /**
@@ -143,10 +146,26 @@ const verifyAndUpdateDatabase=async()=>{
 };
 const connect=()=>{const c=readConn();if(c.url&&c.key){supabase=createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});return true}return false};
 const refreshAfterDatabaseChange=async()=>{
- await loadData();
- if(customEntryMode&&customEntryDate)await loadHistoricalView(customEntryDate);
- if(reportDate)await loadReportDate(reportDate);
- render();
+ if(backgroundRefreshInFlight){
+  backgroundRefreshQueued=true;
+  return;
+ }
+ backgroundRefreshInFlight=true;
+ try{
+  await loadData();
+  if(customEntryMode&&customEntryDate)await loadHistoricalView(customEntryDate);
+  if(reportDate)await loadReportDate(reportDate);
+ }finally{
+  backgroundRefreshInFlight=false;
+  if(backgroundRefreshQueued){
+   backgroundRefreshQueued=false;
+   if(backgroundRefreshTimer)window.clearTimeout(backgroundRefreshTimer);
+   backgroundRefreshTimer=window.setTimeout(()=>{
+    backgroundRefreshTimer=undefined;
+    void refreshAfterDatabaseChange();
+   },250);
+  }
+ }
 };
 const transactionRpc=async(name:string,args:Record<string,any>)=>{
  if(!supabase)throw new Error("Supabase is not connected.");
@@ -159,7 +178,8 @@ const transactionRpc=async(name:string,args:Record<string,any>)=>{
   result=await supabase.rpc("record_custom_entry",{p_kind:name,p_business_date:customEntryDate,p_payload:args});
  }
  if(result.error)throw result.error;
- await refreshAfterDatabaseChange();
+ // Visible UI updates belong to the completed action's caller.
+ // Background synchronization never rebuilds the active page.
  return result;
 };
 const daysAgo=(n:number,h=12)=>{const d=new Date();d.setDate(d.getDate()-n);d.setHours(h,15,0,0);return d.toISOString()};
@@ -285,22 +305,27 @@ async function setupRealtime(){
  if(demo||!supabase||!profile)return;
  if(realtimeChannel)await supabase.removeChannel(realtimeChannel);
  if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}
+ if(backgroundRefreshTimer){window.clearTimeout(backgroundRefreshTimer);backgroundRefreshTimer=undefined}
+ backgroundRefreshQueued=false;
+ backgroundRefreshInFlight=false;
+
  const tables=[
   "sales","sale_transactions","inventory_purchases","returns",
   "credit_ledger","debtor_ledger","creditors","debtors",
   "products","profiles","audit_logs","shop_settings",
   "daily_financial_summaries","lifetime_financial_summaries"
  ];
- let refreshQueued=false;
+
+ let realtimeEventTimer:number|undefined;
  const queueRefresh=()=>{
-  if(refreshQueued)return;
-  refreshQueued=true;
-  window.setTimeout(async()=>{
-   refreshQueued=false;
+  if(realtimeEventTimer)return;
+  realtimeEventTimer=window.setTimeout(()=>{
+   realtimeEventTimer=undefined;
    if(!profile||demo||!supabase)return;
-   try{await refreshAfterDatabaseChange()}catch(err){console.warn("Live refresh failed",err)}
+   void refreshAfterDatabaseChange().catch(err=>console.warn("Live background refresh failed",err));
   },120);
  };
+
  realtimeChannel=supabase.channel("shop-management-live-"+profile.id);
  for(const table of tables){
   realtimeChannel.on("postgres_changes",{event:"*",schema:"public",table},()=>queueRefresh());
@@ -308,10 +333,13 @@ async function setupRealtime(){
  realtimeChannel.subscribe((status:string)=>{
   if(status!=="SUBSCRIBED")console.warn("Shop Management realtime status:",status);
  });
- realtimeRefreshTimer=window.setInterval(async()=>{
+
+ // Fallback synchronization is data-only. It never calls render(), so the
+ // current page, search, focus, forms, and unsaved values remain untouched.
+ realtimeRefreshTimer=window.setInterval(()=>{
   if(!profile||demo||!supabase)return;
-  try{await refreshAfterDatabaseChange()}catch(err){console.warn("Live fallback refresh failed",err)}
- },customEntryMode?2000:5000);
+  void refreshAfterDatabaseChange().catch(err=>console.warn("Live fallback refresh failed",err));
+ },5000);
 }
 
 function shell(title:string){
@@ -1358,8 +1386,10 @@ function bind(){
    if(refreshBtn.disabled)return;
    refreshBtn.disabled=true;
    refreshBtn.textContent="↻ Refreshing…";
-   try{await loadData();render();notify("Data refreshed.","success")}
-   catch(err){notify(errorMessage(err),"error")}
+   try{
+    await refreshAfterDatabaseChange();
+    notify("Data refreshed in the background. Your current screen and entered values were kept.","success")
+   }catch(err){notify(errorMessage(err),"error")}
    finally{
     const b=document.querySelector<HTMLButtonElement>("#refresh");
     if(b){b.disabled=false;b.textContent="↻ Refresh"}
