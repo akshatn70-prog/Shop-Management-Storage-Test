@@ -594,7 +594,16 @@ function bindSale(){
  sel.addEventListener("change",()=>update(true));qty.addEventListener("input",()=>update(false));price.addEventListener("input",()=>update(false));unit.addEventListener("change",()=>update(false));
  document.querySelector("#saleProducts")?.addEventListener("click",e=>{const b=(e.target as HTMLElement).closest<HTMLElement>("[data-product]");if(b){sel.value=b.dataset.product!;update()}});
  const saleCreditor=f.elements.namedItem("creditor") as HTMLSelectElement;
-saleCreditor.addEventListener("change",async()=>{if(saleCreditor.value!=="__new__")return;const n=prompt("Creditor name");if(!n?.trim()){saleCreditor.value="";return}const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){saleCreditor.value="";return}try{const c=await createCreditor(n.trim(),mbl.trim());render();notify("Creditor registered. Select it for the sale.","success")}catch(err){saleCreditor.value="";notify(errorMessage(err),"error")}});
+saleCreditor.addEventListener("change",async()=>{if(saleCreditor.value!=="__new__")return;const n=prompt("Creditor name");if(!n?.trim()){saleCreditor.value="";return}const mbl=prompt("Creditor mobile number");if(!mbl?.trim()){saleCreditor.value="";return}try{
+ const c=await createCreditor(n.trim(),mbl.trim());
+ const option=document.createElement("option");
+ option.value=String(c?.id||"");
+ option.textContent=String(c?.name||n.trim())+" — "+String(c?.mobile||mbl.trim());
+ saleCreditor.appendChild(option);
+ saleCreditor.value=String(c?.id||"");
+ mode.dispatchEvent(new Event("change"));
+ notify("Creditor registered and selected for the sale.","success");
+}catch(err){saleCreditor.value="";notify(errorMessage(err),"error")}});
 mode.addEventListener("change",()=>{const v=mode.value,split=v==="split"||v==="credit_split",cr=v==="credit"||v==="credit_split";if(!cr) (f.elements.namedItem("creditor") as HTMLSelectElement).value="";document.querySelector("#cashBox")?.classList.toggle("hidden",!split);document.querySelector("#upiBox")?.classList.toggle("hidden",!split);document.querySelector("#creditBox")?.classList.toggle("hidden",v!=="credit_split");document.querySelector("#creditorBox")?.classList.toggle("hidden",!cr);update(false)});update();
  f.addEventListener("submit",async e=>{e.preventDefault();const p=products.find(x=>x.id===sel.value)!;const n=Number(qty.value),base=p.unit_type==="piece"?n:unit.value==="kg"?n*1000:n,total=saleTotal(p,base,Number(price.value)),v=mode.value;let cash=Number((f.elements.namedItem("cash") as HTMLInputElement).value)||0,upi=Number((f.elements.namedItem("upi") as HTMLInputElement).value)||0,credit=Number((f.elements.namedItem("credit") as HTMLInputElement).value)||0;const cr=(f.elements.namedItem("creditor") as HTMLSelectElement).value||null;if(!n||base<=0||base>p.current_stock_base)return notify("Invalid quantity or insufficient stock.","error");if(v==="cash"){cash=total;upi=0;credit=0}if(v==="upi"){cash=0;upi=total;credit=0}if(v==="credit"){cash=0;upi=0;credit=total}if(v==="split"&&Math.abs(cash+upi-total)>.01)return notify("Cash + UPI must equal total.","error");if(v==="credit_split"&&(credit<=0||Math.abs(cash+upi+credit-total)>.01))return notify("Cash + UPI + Credit must equal total.","error");if((v==="credit"||v==="credit_split")&&!cr)return notify("Select a creditor.","error");try{await saveSale({product_id:p.id,quantity_base:base,quantity_display:n,sold_unit:unit.value,selling_price_per_base_unit:Number(price.value)},v,cash,upi,credit,cr);notify("Sale completed.","success");await loadData();render()}catch(err){notify(errorMessage(err),"error")}})
 }
@@ -777,7 +786,16 @@ function productForm(){
  };
  const syncPayment=()=>{const v=mode.value,credit=v==="credit",split=v==="split";document.querySelector("#productDebtorBox")?.classList.toggle("hidden",!credit);document.querySelector("#productCashBox")?.classList.toggle("hidden",!split);document.querySelector("#productUpiBox")?.classList.toggle("hidden",!split);if(v==="pre_stock"){pre.checked=true;pre.disabled=true;cashEl.value="0";upiEl.value="0"}else pre.disabled=false;if(!split){cashEl.value="0";upiEl.value="0"}};
  unitEl.addEventListener("change",syncUnit);mode.addEventListener("change",()=>{if(mode.value!=="credit")db.value="";syncPayment()});syncUnit();syncPayment();
- db.addEventListener("change",async()=>{if(db.value!=="__new__")return;const n=prompt("Supplier/debtor name"),mbl=prompt("Mobile number");if(!n?.trim()||!mbl?.trim()){db.value="";return}try{await createDebtor(n.trim(),mbl.trim());render();notify("Debtor registered. Select it for the purchase.","success")}catch(err){db.value="";notify(errorMessage(err),"error")}});
+ db.addEventListener("change",async()=>{if(db.value!=="__new__")return;const n=prompt("Supplier/debtor name"),mbl=prompt("Mobile number");if(!n?.trim()||!mbl?.trim()){db.value="";return}try{
+ const d=await createDebtor(n.trim(),mbl.trim());
+ const option=document.createElement("option");
+ option.value=String(d?.id||"");
+ option.textContent=String(d?.name||n.trim())+" — "+String(d?.mobile||mbl.trim());
+ db.appendChild(option);
+ db.value=String(d?.id||"");
+ sync();
+ notify("Debtor registered and selected for the purchase.","success");
+}catch(err){db.value="";notify(errorMessage(err),"error")}});
  f.addEventListener("submit",async e=>{
   e.preventDefault();
   const fd=new FormData(f),name=String(fd.get("name")||"").trim(),unit=String(fd.get("unit")),q=Number(fd.get("qty")),low=Number(fd.get("low")),buy=Number(fd.get("purchase")),sell=Number(fd.get("sale")),pay=String(fd.get("payment")),pre=fd.get("prestock")==="on"||pay==="pre_stock",debtor=String(fd.get("debtor")||"")||null;
@@ -1378,7 +1396,7 @@ function bind(){
  document.querySelector("#moreNav")?.addEventListener("click",()=>{activeTab="more";dashboardSummaryKind="";render()});
  document.querySelector("#uiBack")?.addEventListener("click",()=>{activeTab="dashboard";render()});
  document.querySelector("#addProductDashboard")?.addEventListener("click",()=>productForm());
- document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];customEntryMode=false;customEntryDate="";historicalView=null;historyDate="";historyRange="today";reportDate="";purchaseDate="";auditDate="";reportLookup=null;reportLookupDate="";activeTab="dashboard";login()});
+ document.querySelector("#logout")?.addEventListener("click",async()=>{if(realtimeChannel&&supabase){await supabase.removeChannel(realtimeChannel);realtimeChannel=null}if(realtimeRefreshTimer){window.clearInterval(realtimeRefreshTimer);realtimeRefreshTimer=undefined}if(backgroundRefreshTimer){window.clearTimeout(backgroundRefreshTimer);backgroundRefreshTimer=undefined}backgroundRefreshQueued=false;backgroundRefreshInFlight=false;if(!demo)await supabase?.auth.signOut();profile=null;demo=false;demoReady=false;cartItems=[];customEntryMode=false;customEntryDate="";historicalView=null;historyDate="";historyRange="today";reportDate="";purchaseDate="";auditDate="";reportLookup=null;reportLookupDate="";activeTab="dashboard";login()});
  const refreshBtn=document.querySelector<HTMLButtonElement>("#refresh");
  if(refreshBtn){
   const refresh=async(e?:Event)=>{
