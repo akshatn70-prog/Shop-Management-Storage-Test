@@ -187,7 +187,7 @@ begin
       select 1
       from public.debtors d
       where d.id=new.debtor_id
-        and d.shop_id=new.shop_id
+        and d.shop_id=v_shop_id
         and d.is_active=true
     ) then
       raise exception 'Debtor not found for this shop';
@@ -206,7 +206,7 @@ begin
       notes
     )
     values(
-      new.shop_id,
+      v_shop_id,
       new.debtor_id,
       new.id,
       'credit_purchase',
@@ -256,7 +256,7 @@ insert into public.debtor_ledger(
   created_at
 )
 select
-  i.shop_id,
+  (select p.shop_id from public.profiles p where p.id=i.purchased_by),
   i.debtor_id,
   i.id,
   'credit_purchase',
