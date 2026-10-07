@@ -256,9 +256,9 @@ async function loadData(){
   supabase.from("products").select("*").eq("is_active",true).order("name"),
   supabase.from("sales").select("*,products(name),profiles:worker_id(full_name)").order("sold_at",{ascending:false}).limit(1000),
   supabase.from("inventory_purchases").select("*,profiles:purchased_by(full_name)").order("purchased_at",{ascending:false}).limit(1000),
-  supabase.from("creditors").select("*").order("name"),
+  supabase.from("creditors").select("*").eq("is_active",true).order("name"),
   supabase.from("credit_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(2000),
-  supabase.from("debtors").select("*").order("name"),
+  supabase.from("debtors").select("*").eq("is_active",true).order("name"),
   supabase.from("debtor_ledger").select("*,profiles:worker_id(full_name)").order("created_at",{ascending:false}).limit(2000),
   supabase.from("daily_financial_summaries").select("*").order("business_date",{ascending:false}).limit(400),
   supabase.from("lifetime_financial_summaries").select("*").limit(1).maybeSingle(),
@@ -877,7 +877,7 @@ async function createDebtor(name:string,mobile:string){
  const r=await supabase!.rpc("get_or_create_debtor",{p_name:name,p_mobile:mobile});if(r.error)throw r.error;await loadData();return r.data;
 }
 function debtorsView(){
- return '<section class="page debtors-page"><div class="page-head"><div><h2>Debtors</h2><p class="muted">Supplier credit purchases and payments.</p></div><button id="newDebtor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="debtorSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+debtors.map(d=>'<tr class="debtor-row" data-q="'+esc((d.name+" "+d.mobile).toLowerCase())+'"><td>'+esc(d.name)+'</td><td>'+esc(d.mobile)+'</td><td class="'+(dBalance(d.id)>0?"negative":"positive")+'">'+money(dBalance(d.id))+'</td><td><button class="smallbtn pay-debtor" data-id="'+d.id+'">Pay</button> <button class="smallbtn debtor-history" data-id="'+d.id+'">History</button></td></tr>').join("")+'</tbody></table></div></div><div id="debtorDetail"></div></section>';
+ return '<section class="page debtors-page"><div class="page-head"><div><h2>Debtors</h2><p class="muted">Supplier credit purchases and payments.</p></div><button id="newDebtor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="debtorSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+debtors.map(d=>'<tr class="debtor-row" data-q="'+esc((d.name+" "+d.mobile).toLowerCase())+'"><td>'+esc(d.name)+'</td><td>'+esc(d.mobile)+'</td><td class="'+(dBalance(d.id)>0?"negative":"positive")+'">'+money(dBalance(d.id))+'</td><td><button class="smallbtn pay-debtor" data-id="'+d.id+'">Pay</button> <button class="smallbtn debtor-history" data-id="'+d.id+'">History</button> '+(profile?.role==="owner"?'<button class="smallbtn danger delete-debtor" data-id="'+d.id+'">Delete</button>':"")</td></tr>').join("")+'</tbody></table></div></div><div id="debtorDetail"></div></section>';
 }
 function bindDebtors(){
  document.querySelector("#debtorSearch")?.addEventListener("input",e=>{const q=(e.target as HTMLInputElement).value.toLowerCase();document.querySelectorAll<HTMLElement>(".debtor-row").forEach(x=>x.style.display=(x.dataset.q||"").includes(q)?"":"none")});
@@ -891,11 +891,22 @@ function bindDebtors(){
   document.querySelector("#closeDebtor")?.addEventListener("click",()=>{openDebtorHistoryId="";host.innerHTML=""});
  };
  document.querySelectorAll<HTMLButtonElement>(".debtor-history").forEach(b=>b.addEventListener("click",()=>showDebtorHistory(b.dataset.id!)));
+ document.querySelectorAll<HTMLButtonElement>(".delete-debtor").forEach(b=>b.addEventListener("click",async()=>{
+  const id=b.dataset.id!,d=debtors.find(x=>x.id===id),bal=dBalance(id);
+  if(profile?.role!=="owner")return notify("Owner only.","error");
+  if(Math.abs(bal)>0.01)return notify("Cannot delete debtor with outstanding balance of "+money(bal)+". Settle it first.","error");
+  if(!window.confirm("Delete debtor "+String(d?.name||"")+"? Historical purchases and payments will be preserved."))return;
+  b.disabled=true;
+  try{
+   if(demo){if(d)(d as any).is_active=false;debtors=debtors.filter(x=>x.id!==id);render();notify("Debtor deleted. Historical records were preserved.","success");}
+   else{const r=await supabase!.rpc("delete_debtor_account",{p_debtor_id:id});if(r.error)throw r.error;await loadData();render();notify("Debtor deleted. Historical records were preserved.","success");}
+  }catch(err){b.disabled=false;notify(errorMessage(err),"error")}
+ }));
  if(openDebtorHistoryId)showDebtorHistory(openDebtorHistoryId);
 }
 
 function creditorsView(){
- return '<section class="page creditors-page"><div class="page-head"><div><h2>Creditors</h2><p class="muted">Customer credit balances and payments.</p></div><button id="newCreditor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="creditSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+creditors.map(c=>'<tr class="credit-row" data-q="'+esc((c.name+" "+c.mobile).toLowerCase())+'"><td>'+esc(c.name)+'</td><td>'+esc(c.mobile)+'</td><td class="'+(qBalance(c.id)>0?"negative":"positive")+'">'+money(qBalance(c.id))+'</td><td><button class="smallbtn pay-credit" data-id="'+c.id+'">Pay</button> <button class="smallbtn credit-history" data-id="'+c.id+'">History</button></td></tr>').join("")+'</tbody></table></div></div><div id="creditDetail"></div></section>';
+ return '<section class="page creditors-page"><div class="page-head"><div><h2>Creditors</h2><p class="muted">Customer credit balances and payments.</p></div><button id="newCreditor" class="primary">＋ Add</button></div><div class="panel"><label>Search<input id="creditSearch" placeholder="Name or mobile..."></label><div class="table-wrap"><table><thead><tr><th>Name</th><th>Mobile</th><th>Outstanding</th><th></th></tr></thead><tbody>'+creditors.map(c=>'<tr class="credit-row" data-q="'+esc((c.name+" "+c.mobile).toLowerCase())+'"><td>'+esc(c.name)+'</td><td>'+esc(c.mobile)+'</td><td class="'+(qBalance(c.id)>0?"negative":"positive")+'">'+money(qBalance(c.id))+'</td><td><button class="smallbtn pay-credit" data-id="'+c.id+'">Pay</button> <button class="smallbtn credit-history" data-id="'+c.id+'">History</button> '+(profile?.role==="owner"?'<button class="smallbtn danger delete-creditor" data-id="'+c.id+'">Delete</button>':"")</td></tr>').join("")+'</tbody></table></div></div><div id="creditDetail"></div></section>';
 }
 function bindCreditors(){
  document.querySelector("#creditSearch")?.addEventListener("input",e=>{const q=(e.target as HTMLInputElement).value.toLowerCase();document.querySelectorAll<HTMLElement>(".credit-row").forEach(x=>x.style.display=(x.dataset.q||"").includes(q)?"":"none")});
@@ -929,6 +940,17 @@ function bindCreditors(){
   document.querySelector("#closeCredit")?.addEventListener("click",()=>{openCreditorHistoryId="";host.innerHTML=""});
  };
  document.querySelectorAll<HTMLButtonElement>(".credit-history").forEach(b=>b.addEventListener("click",()=>showCreditorHistory(b.dataset.id!)));
+ document.querySelectorAll<HTMLButtonElement>(".delete-creditor").forEach(b=>b.addEventListener("click",async()=>{
+  const id=b.dataset.id!,c=creditors.find(x=>x.id===id),bal=qBalance(id);
+  if(profile?.role!=="owner")return notify("Owner only.","error");
+  if(Math.abs(bal)>0.01)return notify("Cannot delete creditor with outstanding balance of "+money(bal)+". Settle it first.","error");
+  if(!window.confirm("Delete creditor "+String(c?.name||"")+"? Historical sales and payments will be preserved."))return;
+  b.disabled=true;
+  try{
+   if(demo){if(c)(c as any).is_active=false;creditors=creditors.filter(x=>x.id!==id);render();notify("Creditor deleted. Historical records were preserved.","success");}
+   else{const r=await supabase!.rpc("delete_creditor_account",{p_creditor_id:id});if(r.error)throw r.error;await loadData();render();notify("Creditor deleted. Historical records were preserved.","success");}
+  }catch(err){b.disabled=false;notify(errorMessage(err),"error")}
+ }));
  if(openCreditorHistoryId)showCreditorHistory(openCreditorHistoryId);
 }
 
