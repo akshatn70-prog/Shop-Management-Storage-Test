@@ -793,7 +793,7 @@ function productForm(){
  option.textContent=String(d?.name||n.trim())+" — "+String(d?.mobile||mbl.trim());
  db.appendChild(option);
  db.value=String(d?.id||"");
- sync();
+ syncPayment();
  notify("Debtor registered and selected for the purchase.","success");
 }catch(err){db.value="";notify(errorMessage(err),"error")}});
  f.addEventListener("submit",async e=>{
