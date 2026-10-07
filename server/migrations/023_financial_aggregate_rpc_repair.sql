@@ -498,7 +498,7 @@ begin
   );
   return result_row;
 end;
-$;
+$$;
 
 
 
