@@ -815,9 +815,14 @@ function productForm(){
   if(r.error)return notify(errorMessage(r.error),"error");
   const productId=r.data as string;let createdPhotoPath:string|null=null;
   if(pendingPhoto){try{createdPhotoPath=await uploadProductPhoto(productId,pendingPhoto)}catch(err){await supabase!.rpc("delete_product",{p_product_id:productId});return notify("Product was not added because its photo could not be uploaded: "+errorMessage(err),"error")}}
-  if(base>0){
-   const purchase=await transactionRpc("add_inventory_purchase",{p_product_id:productId,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:unit==="piece"?"piece":unit,p_purchase_price:buy,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
-   if(purchase.error){const created=products.find(x=>x.id===productId);if(createdPhotoPath)await supabase!.storage.from(PRODUCT_PHOTO_BUCKET).remove([createdPhotoPath]);await supabase!.rpc("delete_product",{p_product_id:productId});return notify(errorMessage(purchase.error),"error")}
+  try{
+   if(base>0){
+    await transactionRpc("add_inventory_purchase",{p_product_id:productId,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:unit==="piece"?"piece":unit,p_purchase_price:buy,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:pre,p_supplier_name:"Opening stock"});
+   }
+  }catch(err){
+   if(createdPhotoPath)await supabase!.storage.from(PRODUCT_PHOTO_BUCKET).remove([createdPhotoPath]);
+   await supabase!.rpc("delete_product",{p_product_id:productId});
+   return notify(errorMessage(err),"error");
   }
   await loadData();render();notify("Product added.","success")
  });
@@ -862,8 +867,12 @@ function purchaseForm(){
    if(credit>0&&debtor)debtorLedger.unshift({id:"dpl"+Date.now(),debtor_id:debtor,type:"credit_purchase",amount:credit,payment_mode:"credit",cash_amount:0,upi_amount:0,created_at:new Date().toISOString(),worker_id:profile!.id,profiles:{full_name:profile!.full_name}});
    notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success");render();return
   }
-  const r=await transactionRpc("add_inventory_purchase",{p_product_id:p.id,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:p.unit_type==="piece"?"piece":pu,p_purchase_price:pr,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:prestock,p_supplier_name:String(fd.get("supplier")||p.name)});
-  if(r.error)return notify(errorMessage(r.error),"error");await loadData();render();notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success")
+  try{
+   await transactionRpc("add_inventory_purchase",{p_product_id:p.id,p_quantity_base:base,p_quantity_display:q,p_purchase_unit:p.unit_type==="piece"?"piece":pu,p_purchase_price:pr,p_selling_price:sell,p_payment_mode:pay,p_cash_amount:cash,p_upi_amount:upi,p_credit_amount:credit,p_debtor_id:debtor,p_pre_stock:prestock,p_supplier_name:String(fd.get("supplier")||p.name)});
+  }catch(err){
+   return notify(errorMessage(err),"error");
+  }
+  await loadData();render();notify(prestock?"Pre-stock recorded.":"Purchase recorded.","success")
  });
 }
 async function createCreditor(name:string,mobile:string){
