@@ -162,7 +162,7 @@ const refreshAfterDatabaseChange=async()=>{
    if(backgroundRefreshTimer)window.clearTimeout(backgroundRefreshTimer);
    backgroundRefreshTimer=window.setTimeout(()=>{
     backgroundRefreshTimer=undefined;
-    void refreshAfterDatabaseChange();
+    void refreshAfterDatabaseChange().catch(err=>console.warn("Queued background refresh failed",err));
    },250);
   }
  }
