@@ -35,6 +35,7 @@ declare
   credit numeric := coalesce(p_credit_amount,0);
   v_id uuid;
   v_shop_id text;
+  v_stock_before numeric;
   is_pre_stock boolean := coalesce(p_pre_stock,false) or p_payment_mode='pre_stock';
 begin
   if not (select public.is_owner()) then
@@ -74,6 +75,8 @@ begin
   if not found then
     raise exception 'Product not found';
   end if;
+
+  v_stock_before := p.current_stock_base;
 
   if p.unit_type='piece' then
     if p_purchase_unit<>'piece'
@@ -204,13 +207,9 @@ begin
 
   perform set_config('shop.allow_stock_change','off',true);
 
-  if not exists(
-    select 1
-    from public.products
-    where id=p_product_id
-      and current_stock_base >= p_quantity_base
-  ) then
-    raise exception 'Purchase was recorded but product stock was not updated';
+  if (select current_stock_base from public.products where id=p_product_id)
+     <> v_stock_before+p_quantity_base then
+    raise exception 'Purchase was recorded but product stock was not updated correctly';
   end if;
 
   perform public.write_audit(
