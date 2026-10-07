@@ -334,8 +334,8 @@ async function setupRealtime(){
   if(status!=="SUBSCRIBED")console.warn("Shop Management realtime status:",status);
  });
 
- // Fallback synchronization is data-only. It never calls render(), so the
- // current page, search, focus, forms, and unsaved values remain untouched.
+ // Fallback synchronization is data-only. It never rebuilds the active page,
+ // so the current page, search, focus, forms, and unsaved values remain untouched.
  realtimeRefreshTimer=window.setInterval(()=>{
   if(!profile||demo||!supabase)return;
   void refreshAfterDatabaseChange().catch(err=>console.warn("Live fallback refresh failed",err));
